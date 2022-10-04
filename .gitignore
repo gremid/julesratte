@@ -1,0 +1,11 @@
+.cache/
+.cpcache/
+.nrepl-port
+.env
+
+README.html
+README.md.temp
+
+data/
+reports/
+wikimedia-dumps/

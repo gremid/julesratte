@@ -1,0 +1,37 @@
+name: Tests
+
+on: [push]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        # Tests emitting XML fail on Windows because of '\r\n' line endings
+        # os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Prepare java
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+
+      - name: Install clojure tools-deps
+        uses: DeLaGuardo/setup-clojure@3.7
+        with:
+          cli: 1.11.1.1165
+
+      - name: Execute tests on Linux and MacOS
+        if: ${{ matrix.os != 'windows-latest' }}
+        run: clojure -X:test
+        shell: bash
+
+      - name: Execute tests on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: clojure -X:test
+        shell: powershell
+

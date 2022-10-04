@@ -1,0 +1,2 @@
+{:lint-as {manifold.deferred/loop  clojure.core/loop
+           manifold.deferred/recur clojure.core/recur}}
