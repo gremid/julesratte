@@ -7,19 +7,24 @@
   [response]
   (get-in response [:body :query :tokens :logintoken]))
 
+(def login-token-request
+  (client/request-with-params
+   :action "query"
+   :meta "tokens"
+   :type "login"))
+
 (defn query-login-token!
-  [req]
-  (->
-   (merge req {:action "query" :meta "tokens" :type "login"})
-   (client/request)
-   (d/chain get-login-token)))
+  [config]
+  (d/chain (client/request! config login-token-request) get-login-token))
 
 (defn do-login!
-  [req user password login-token]
-  (->>
-   {:action "login" :lgname user :lgpassword password :lgtoken login-token}
-   (merge req)
-   (client/request)))
+  [config user password login-token]
+  (->> (client/request-with-params
+        :action "login"
+        :lgname user
+        :lgpassword password
+        :lgtoken login-token)
+       (client/request! config)))
 
 (defn assert-successful-login
   [response]
@@ -28,35 +33,40 @@
     (d/error-deferred (ex-info "Login failed" response))))
 
 (defn login!
-  [req user password]
-  (->
-   (query-login-token! req)
-   (d/chain (partial do-login! req user password) assert-successful-login)))
-
+  [config user password]
+  (d/chain
+   (query-login-token! config)
+   (partial do-login! config user password)
+   assert-successful-login))
 
 (defn get-csrf-token
   [response]
   (get-in response [:body :query :tokens :csrftoken]))
 
+(def csrf-token-request
+  (client/request-with-params
+   :action "query"
+   :meta "tokens"))
+
 (defn query-csrf-token!
-  [req]
-  (-> (client/request (merge req {:action "query" :meta "tokens"}))
-      (d/chain get-csrf-token)))
+  [config]
+  (d/chain (client/request! config csrf-token-request) get-csrf-token))
 
 (defn logout-callback
-  [req csrf-token]
-  (client/request (merge req {:action "logout" :token csrf-token})))
+  [config csrf-token]
+  (->> (client/request-with-params :action "logout" :token csrf-token)
+       (client/request! config)))
 
 (defn logout!
-  [req]
-  (d/chain (query-csrf-token! req) (partial logout-callback req)))
+  [config]
+  (d/chain (query-csrf-token! config) (partial logout-callback config)))
 
 (defn login-callback
-  [req f _response]
+  [config f _response]
   (->
-   (d/future (f req))
-   (d/finally (partial logout! req))))
+   (d/future (f config))
+   (d/finally (partial logout! config))))
 
 (defn with-login-session
-  [req user password f]
-  (d/chain (login! req user password) (partial login-callback req f)))
+  [config user password f]
+  (d/chain (login! config user password) (partial login-callback config f)))

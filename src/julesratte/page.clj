@@ -12,10 +12,13 @@
   [title]
   (-> title (str/replace " " "_") str/trim))
 
-(def revisions-request
-  {:prop    "revisions"
-   :rvprop  ["user" "timestamp" "content"]
-   :rvslots "*"})
+(defn revisions-request-with-params
+  [& params]
+  (->> (concat [:prop    "revisions"
+                :rvprop  ["user" "timestamp" "content"]
+                :rvslots "*"]
+               params)
+       (apply client/request-with-params)))
 
 (defn extract-revision
   [{:keys [title] [revision] :revisions}]
@@ -34,27 +37,31 @@
    (filter (every-pred :title :text))))
 
 (defn request-revisions
-  [req]
-  (->> (client/requests (merge revisions-request req))
-       (s/transform extract-revisions-xf)))
+  ([config]
+   (request-revisions config (revisions-request-with-params)))
+  ([config request]
+   (->> (client/requests! config request)
+        (s/transform extract-revisions-xf))))
 
 (defn request-by-title
-  [req & titles]
+  [config & titles]
   (request-revisions
-   (assoc req :titles (into #{} (map encode-title) titles))))
+   config
+   (revisions-request-with-params
+    :titles (into #{} (map encode-title) titles))))
 
 (def max-random-pages-per-request
   50)
 
 (defn request-random
-  [req min-n]
+  [config min-n]
   (let [limit-per-req (max 1 (min max-random-pages-per-request min-n))
         max-requests  (Math/ceil (/ min-n limit-per-req))]
     (request-revisions
-     (assoc req
-            ::client/max-requests max-requests
-            :generator            "random"
-            :grnnamespace         "0"
-            :grnlimit             (str limit-per-req)))))
+     (assoc config :max-requests max-requests)
+     (revisions-request-with-params
+      :generator            "random"
+      :grnnamespace         "0"
+      :grnlimit             (str limit-per-req)))))
 
 

@@ -10,28 +10,20 @@
    [manifold.time]
    [manifold.stream :as s]))
 
-;; ## API request paramater handling
+;; ## API request parameter handling
 ;;
 ;; Maps collection values to pipe-separated strings and removes `nil` values.
 ;;
 ;; See https://www.mediawiki.org/wiki/API:Data_formats#Multivalue_parameters for
 ;; details.
 
-(declare transform-params)
-
 (defn transform-params-kv
   [[k v]]
-  [k (cond
-       ;; Recursion
-       (map? v)
-       (transform-params v)
-       ;; Collection transform
-       (coll? v)
+  [k (if (coll? v)
        (if (some #(str/includes? % "|") v)
          (str/join "\u001f" (cons "" v))
          (str/join "|" v))
-       ;; Default
-       :else v)])
+       v)])
 
 (def transform-params-xf
   (comp
@@ -44,68 +36,51 @@
 
 ;; ## API request configuration
 
-(defn build-http-client
-  [config]
-  (hc/build-http-client (merge {:connect-timeout 5000
-                                :version         :http-2 #_:http-1.1}
-                               config)))
-
 (def default-http-client
-  (build-http-client {}))
+  (hc/build-http-client {:connect-timeout 5000
+                         :version         :http-2}))
+
+(defn create-session-client
+  []
+  (hc/build-http-client {:connect-timeout 5000
+                         :version         :http-2
+                         :cookie-policy   :all}))
+
+(defn config-for-endpoint
+  ([url]
+   (config-for-endpoint url default-http-client))
+  ([url http-client]
+   {:http-client  http-client
+    :url          url
+    :max-retries  3
+    :max-requests 100
+    :warn->error? true}))
+
+(defn endpoint-url
+  ([host]
+   (endpoint-url "https" host))
+  ([scheme host]
+   (endpoint-url scheme host "/w/api.php"))
+  ([scheme host path]
+   (str scheme "://" host path)))
 
 (def user-agent
   "julesratte/1.0 (https://github.com/gremid/julesratte)")
 
-(defn base-request
-  ([host]
-   (base-request host default-http-client))
-  ([host http-client]
-   {:method        :post
-    :action        "query"
-    :format        "json"
-    :formatversion "2"
-    :errorformat   "plaintext"
-    :maxlag        "5"
-    :headers       {"accept" "application/json"
-                    "user-agent" user-agent}
-    :async?        true
-    :http-client   http-client
-    ::host         host
-    ::max-retries  3
-    ::max-requests 100
-    ::warn->error? true}))
+(def base-request
+  {:method      :post
+   :headers     {"accept"     "application/json"
+                 "user-agent" user-agent}
+   :form-params {:action        "query"
+                 :format        "json"
+                 :formatversion "2"
+                 :errorformat   "plaintext"
+                 :maxlag        "5"}
+   :async?      true})
 
-(defn session-base-request
-  [host]
-  (base-request host (build-http-client {:cookie-policy :all})))
-
-(defn build-url
-  [{::keys [scheme host path script extension]}]
-  (str (or scheme "https")
-       "://"
-       host
-       (or path "/w/")
-       (or script "api")
-       (or extension ".php")))
-
-(def http-client-params
-  #{:method :url :headers :async? :http-client})
-
-(def select-params-xf
-  (remove (comp (some-fn namespace http-client-params) first)))
-
-(defn select-params
-  [req]
-  (into {} select-params-xf req))
-
-(defn build-request
-  [req]
-  (let [params-key (condp = (req :method)
-                     :get  :query-params
-                     :post :form-params
-                     :body)
-        params-map (-> req select-params transform-params)]
-    (assoc req :url (build-url req) params-key params-map)))
+(defn request-with-params
+  [& params]
+  (apply update base-request :form-params assoc params))
 
 (defn json-response?
   [{:keys [content-type]}]
@@ -164,14 +139,11 @@
     {:keys [errors warnings]} :body}]
   (or errors (and warn->error? warnings)))
 
-(def get-request-params
-  (some-fn :query-string :body))
-
 (defn handle-response
   "Check for error/warnings in response and extract body."
   [{:keys [uri request] :as response}]
   (log/tracef "%s :: %s -> %s"
-              uri (get-request-params request)
+              uri (get request :body)
               (select-keys response [:request-time :status]))
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
     (reset! request-delay (Integer/parseInt retry-after)))
@@ -191,31 +163,44 @@
   [^manifail.Aborted e]
   (d/error-deferred (ex-cause e)))
 
-(defn request
-  [{::keys [max-retries] :as req}]
+(defn configure
+  [{:keys [url http-client] :as _config} request]
+  (->
+   request
+   (assoc :url url :http-client http-client)
+   (update :form-params transform-params)))
+
+(defn do-request!
+  [config request]
+  (d/->deferred (hc/request (configure config request))))
+
+(defn request!
+  [{:keys [max-retries] :as config} request]
   (->
    (f/with-retries (f/retries max-retries)
      (->
       (delay-request)
-      (d/chain (fn [_] (-> req build-request hc/request d/->deferred)))
+      (d/chain (fn [& _] (do-request! config request)))
       (d/chain parse-response handle-response)
       (d/catch handle-error)))
    (d/catch manifail.Aborted handle-abort)))
 
-(defn requests
+(defn requests!
   "Stream of API requests/responses based on continuations."
-  ([{::keys [max-requests] :as initial-req}]
+  ([{:keys [max-requests] :as config} initial-request]
    (let [responses (s/stream)]
-     (d/loop [req initial-req remaining (dec max-requests)]
+     (d/loop [request initial-request remaining (dec max-requests)]
        (when-not (s/closed? responses)
-         (-> (request req)
+         (-> (request! config request)
              (d/chain (fn [{{:keys [continue]} :body :as response}]
                         (s/put! responses response)
                         (if (and continue (pos? remaining))
-                          (d/recur (merge req continue) (dec remaining))
+                          (d/recur
+                           (update request :form-params merge continue)
+                           (dec remaining))
                           (s/close! responses))))
              (d/catch' (fn [e]
-                         (log/debugf e "Error during API request %s" req)
+                         (log/debugf e "Error during API request %s" request)
                          (s/close! responses))))))
      responses)))
 
@@ -245,15 +230,14 @@
    :site       site
    :namespaces (vals namespaces)})
 
-(defn build-info-request
-  [req]
-  (assoc req
-         :action "query"
-         :meta   #{"siteinfo" "userinfo"}
-         :siprop #{"general" "namespaces"}
-         :uiprop #{"groups" "rights"}))
+(def info-request
+  (request-with-params
+   :action "query"
+   :meta   #{"siteinfo" "userinfo"}
+   :siprop #{"general" "namespaces"}
+   :uiprop #{"groups" "rights"}))
 
 (defn info
   "Retrieve information about a MediaWiki instance."
-  [req]
-  (-> req build-info-request request (d/chain parse-info)))
+  [config]
+  (d/chain (request! config info-request) parse-info))

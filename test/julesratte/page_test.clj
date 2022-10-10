@@ -7,13 +7,15 @@
 
 (deftest request-pages-by-title
   (let [titles #{"Pfirsich" "Apfel" "Birnen" "Erdbeeren"}
-        req    (client/base-request "de.wiktionary.org")
-        pages  (apply page/request-by-title req titles)
+        config (client/config-for-endpoint
+                (client/endpoint-url "de.wiktionary.org"))
+        pages  (apply page/request-by-title config titles)
         pages  (vec (s/stream->seq pages))]
     (is (= titles (into #{} (map :title pages))))))
 
 (deftest request-random-pages
-  (let [req   (client/base-request "de.wikipedia.org")
-        pages (page/request-random req 5)
-        pages (vec (s/stream->seq pages))]
+  (let [config (client/config-for-endpoint
+                (client/endpoint-url "de.wikipedia.org"))
+        pages  (page/request-random config 5)
+        pages  (vec (s/stream->seq pages))]
     (is (<= 5 (count pages)))))

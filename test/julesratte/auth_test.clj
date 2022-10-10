@@ -21,10 +21,12 @@
 
 (deftest request-authenticated-wiki-info
   (if-let [credentials (credentials-from-env)]
-    (let [req         (client/session-base-request "test.wikipedia.org")
+    (let [config      (client/config-for-endpoint
+                       (client/endpoint-url "test.wikipedia.org")
+                       (client/create-session-client))
           user        (first credentials)
           password    (second credentials)
-          response    (auth/with-login-session req user password client/info)
+          response    (auth/with-login-session config user password client/info)
           response    (deref response)
           wiki-user   (get response :user)
           wiki-groups (get response :groups)]
