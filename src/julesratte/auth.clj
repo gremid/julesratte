@@ -43,19 +43,19 @@
   (-> (client/request (merge req {:action "query" :meta "tokens"}))
       (d/chain get-csrf-token)))
 
-(defn logout!
+(defn logout-callback
   [req csrf-token]
   (client/request (merge req {:action "logout" :token csrf-token})))
 
-(defn csrf-callback
-  [req f csrf-token]
-  (->
-   (d/future (f (assoc req ::csrf-token csrf-token)))
-   (d/finally (partial logout! req csrf-token))))
+(defn logout!
+  [req]
+  (d/chain (query-csrf-token! req) (partial logout-callback req)))
 
 (defn login-callback
   [req f _response]
-  (d/chain (query-csrf-token! req) (partial csrf-callback req f)))
+  (->
+   (d/future (f req))
+   (d/finally (partial logout! req))))
 
 (defn with-login-session
   [req user password f]
