@@ -53,6 +53,9 @@
 (def default-http-client
   (build-http-client {}))
 
+(def user-agent
+  "julesratte/1.0 (https://github.com/gremid/julesratte)")
+
 (defn base-request
   ([host]
    (base-request host default-http-client))
@@ -63,8 +66,8 @@
     :formatversion "2"
     :errorformat   "plaintext"
     :maxlag        "5"
-    :headers       {"accept" "application/json"}
-    :user-agent    "julesratte/1.0 (https://github.com/gremid/julesratte)"
+    :headers       {"accept" "application/json"
+                    "user-agent" user-agent}
     :async?        true
     :http-client   http-client
     ::host         host
@@ -86,7 +89,7 @@
        (or extension ".php")))
 
 (def http-client-params
-  #{:method :url :headers :async? :http-client :user-agent})
+  #{:method :url :headers :async? :http-client})
 
 (def select-params-xf
   (remove (comp (some-fn namespace http-client-params) first)))
@@ -111,6 +114,10 @@
 (defn read-json
   [v]
   (json/read-value v json/keyword-keys-object-mapper))
+
+(defn write-json
+  [v]
+  (json/write-value-as-string v json/keyword-keys-object-mapper))
 
 (defn parse-response
   [response]
