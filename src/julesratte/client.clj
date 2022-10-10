@@ -62,14 +62,15 @@
     :format        "json"
     :formatversion "2"
     :errorformat   "plaintext"
-    :maxlag       "5"
+    :maxlag        "5"
     :headers       {"accept" "application/json"}
     :user-agent    "julesratte/1.0 (https://github.com/gremid/julesratte)"
     :async?        true
     :http-client   http-client
     ::host         host
     ::max-retries  3
-    ::max-requests 100}))
+    ::max-requests 100
+    ::warn->error? true}))
 
 (defn session-base-request
   [host]
@@ -148,25 +149,30 @@
       (d/success-deferred 0))))
 
 (defn retry?
-  [errors]
+  [{{:keys [errors]} :body}]
   (some #{"maxlag" "ratelimited"} (map :code errors)))
+
+(defn error?
+  [{{::keys [warn->error?]}   :request
+    {:keys [errors warnings]} :body}]
+  (or errors (and warn->error? warnings)))
 
 (def get-request-params
   (some-fn :query-string :body))
 
 (defn handle-response
   "Check for error/warnings in response and extract body."
-  [{:keys [uri request] {:keys [errors warnings]} :body :as response}]
+  [{:keys [uri request] :as response}]
   (log/tracef "%s :: %s -> %s"
               uri (get-request-params request)
               (select-keys response [:request-time :status]))
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
     (reset! request-delay (Integer/parseInt retry-after)))
   (cond
-    (retry? errors)      (d/error-deferred f/retry)
-    (or errors warnings) (d/error-deferred
-                          (ex-info (response->error response) response))
-    :else                response))
+    (retry? response) (d/error-deferred f/retry)
+    (error? response) (d/error-deferred
+                       (ex-info (response->error response) response))
+    :else             response))
 
 (defn handle-error
   [^Throwable e]

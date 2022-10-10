@@ -2,8 +2,6 @@
   (:require
    [clojure.test :refer [deftest is]]
    [julesratte.client :as client]
-   [julesratte.page :as page]
-   [julesratte.wikitext :as wt]
    [manifold.deferred :as d]
    [manifold.stream :as s]))
 
