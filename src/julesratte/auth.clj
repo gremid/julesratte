@@ -63,9 +63,7 @@
 
 (defn login-callback
   [config f _response]
-  (->
-   (d/future (f config))
-   (d/finally (partial logout! config))))
+  (d/finally (f config) (partial logout! config)))
 
 (defn with-login-session
   [config user password f]
