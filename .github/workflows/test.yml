@@ -12,18 +12,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4.1.2
 
       - name: Prepare java
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4.1.0
         with:
-          distribution: 'zulu'
-          java-version: '11'
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Install clojure tools-deps
-        uses: DeLaGuardo/setup-clojure@3.7
+        uses: DeLaGuardo/setup-clojure@12.5
         with:
-          cli: 1.11.1.1165
+          cli: 1.11.2.1446
 
       - name: Execute tests on Linux and MacOS
         if: ${{ matrix.os != 'windows-latest' }}

@@ -1,17 +1,17 @@
 {:deps
- {org.clojure/clojure                 {:mvn/version "1.11.1"}
-  org.clojure/data.zip                {:mvn/version "1.0.0"}
-  com.taoensso/timbre                 {:mvn/version "5.2.1"}
-  hato/hato                           {:mvn/version "0.8.2"}
-  metosin/jsonista                    {:mvn/version "0.3.1"}
-  manifold/manifold                   {:mvn/version "0.2.4"}
+ {org.clojure/clojure                 {:mvn/version "1.11.2"}
+  org.clojure/data.zip                {:mvn/version "1.1.0"}
+  com.taoensso/timbre                 {:mvn/version "6.5.0"}
+  hato/hato                           {:mvn/version "0.9.0"}
+  metosin/jsonista                    {:mvn/version "0.3.8"}
+  manifold/manifold                   {:mvn/version "0.4.2"}
   tulos/manifail                      {:mvn/version "0.4.0"}
-  camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.1"}
+  camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
   org.sweble.wikitext/swc-parser-lazy {:mvn/version "3.1.9"}
-  org.apache.commons/commons-compress {:mvn/version "1.19"}}
+  org.apache.commons/commons-compress {:mvn/version "1.26.1"}}
  :aliases
  {:test {:extra-paths ["test"]
-         :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.66.1034"}
-                       com.fzakaria/slf4j-timbre       {:mvn/version "0.3.21"}
-                       io.github.cdimascio/dotenv-java {:mvn/version "2.2.0"}}
+         :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.87.1366"}
+                       com.fzakaria/slf4j-timbre       {:mvn/version "0.4.1"}
+                       io.github.cdimascio/dotenv-java {:mvn/version "3.0.0"}}
          :exec-fn     kaocha.runner/exec-fn}}}
