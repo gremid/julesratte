@@ -54,12 +54,6 @@
   [credentials & body]
   `(let [credentials# ~credentials
          url#      (:url credentials#)]
-     (binding [julesratte.client/*http-client* (session-http-client)]
-       (try
-         (login! url# (:user credentials#) (:password credentials#))
-         ~@body
-         (finally
-           (logout! url#))))))
-
-(comment
-  (with-login {} true))
+     (binding [client/*http-client* (session-http-client)]
+       (login! url# (:user credentials#) (:password credentials#))
+       (try ~@body (finally (logout! url#))))))
