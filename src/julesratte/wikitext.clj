@@ -50,6 +50,10 @@
   (throw (ex-info "Cannot modify Wikitext AST"
                   {:node node :children children})))
 
+(defn tree
+  [^WtNode node]
+  (tree-seq seq seq node))
+
 (defn zipper
   "A read-only zipper for the given Wikitext node."
   [^WtNode node]

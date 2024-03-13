@@ -1,14 +1,14 @@
 (ns julesratte.dump
   "Download Wikimedia dumps and parse XML-encoded page revisions."
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
-            [taoensso.timbre :as log]
-            [julesratte.wikitext :as wt])
-  (:import java.io.InputStream
-           [javax.xml.stream XMLEventReader XMLInputFactory]
-           [javax.xml.stream.events Attribute Characters EndElement StartElement XMLEvent]
-           javax.xml.transform.stream.StreamSource
-           org.apache.commons.compress.compressors.CompressorStreamFactory))
+  (:require
+   [clojure.java.io :as io]
+   [clojure.string :as str])
+  (:import
+   (java.io InputStream)
+   (javax.xml.stream XMLEventReader XMLInputFactory)
+   (javax.xml.stream.events Attribute Characters EndElement StartElement XMLEvent)
+   (javax.xml.transform.stream StreamSource)
+   (org.apache.commons.compress.compressors CompressorStreamFactory)))
 
 ;; ## Download
 
@@ -38,8 +38,6 @@
 (defn config-xml-parser-for-large-dump!
   "Maximize limits for parsing huge XML documents."
   []
-  (log/tracef (str "Setting system properties to max values for "
-                   "parsing huge XML documents (%s)") xml-size-limit-sys-props)
   (doseq [sys-prop xml-size-limit-sys-props]
     (System/setProperty sys-prop (str (Integer/MAX_VALUE)))))
 
@@ -83,9 +81,9 @@
   (doto (XMLInputFactory/newInstance)
     (.setProperty XMLInputFactory/IS_COALESCING true)))
 
-(defn ^XMLEventReader xml-event-reader
+(defn xml-event-reader
   "Read XML stream events from a given input stream."
-  [^InputStream is]
+  ^XMLEventReader [^InputStream is]
   (.. xml-input-factory (createXMLEventReader (StreamSource. is))))
 
 (defn xml-events->seq
@@ -134,9 +132,4 @@
 
 (defn parse-revisions
   [xml-events]
-  (-> xml-events xml-events->seq xml-parse))
-
-(defn parse-revision
-  [{:keys [text] :as revision}]
-  (cond-> revision
-    (not-empty text) (assoc :ast (wt/parse text))))
+  (->> xml-events xml-events->seq xml-parse))
