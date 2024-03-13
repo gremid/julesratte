@@ -1,9 +1,11 @@
 (ns julesratte.auth-test
-  (:require [julesratte.auth :as auth]
-            [julesratte.client :as client]
-            [clojure.test :refer [deftest is]]
-            [clojure.string :as str])
-  (:import io.github.cdimascio.dotenv.Dotenv))
+  (:require
+   [clojure.string :as str]
+   [clojure.test :refer [deftest is]]
+   [julesratte.auth :as auth]
+   [julesratte.client :as client])
+  (:import
+   (io.github.cdimascio.dotenv Dotenv)))
 
 (def ^Dotenv dot-env
   (.. (Dotenv/configure) (ignoreIfMissing) (load)))
@@ -17,19 +19,16 @@
   (let [user     (getenv "JULESRATTE_TEST_USER")
         password (getenv "JULESRATTE_TEST_PASSWORD")]
     (when (and user password)
-      [user password])))
+      {:url      (client/api-endpoint "test.wikipedia.org")
+       :user     user
+       :password password})))
 
 (deftest request-authenticated-wiki-info
-  (if-let [credentials (credentials-from-env)]
-    (let [config      (client/config-for-endpoint
-                       (client/endpoint-url "test.wikipedia.org")
-                       (client/create-session-client))
-          user        (first credentials)
-          password    (second credentials)
-          response    (auth/with-login-session config user password client/info)
-          response    (deref response)
-          wiki-user   (get response :user)
-          wiki-groups (get response :groups)]
-      (is (str/starts-with? user wiki-user))
-      (is (= "user" (get wiki-groups "user"))))
+  (if-let [{:keys [url user] :as credentials} (credentials-from-env)]
+    (auth/with-login credentials
+      (let [info        (client/info url)
+            wiki-user   (get info :user)
+            wiki-groups (get info :groups)]
+        (is (str/starts-with? user wiki-user))
+        (is (= "user" (get wiki-groups "user")))))
     (is true)))

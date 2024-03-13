@@ -1,35 +1,26 @@
 (ns julesratte.client-test
   (:require
    [clojure.test :refer [deftest is]]
-   [julesratte.client :as client]
-   [manifold.deferred :as d]
-   [manifold.stream :as s]))
+   [julesratte.client :as client]))
 
 (deftest request-wiki-infos
-  (let [langs   ["de" "en" "fr" "es" "hu"]
-        configs (map (comp client/config-for-endpoint
-                           client/endpoint-url
-                           #(str % ".wikipedia.org")) langs)
-        infos   (map client/info configs)
-        infos   (deref (apply d/zip infos))]
+  (let [isos  ["de" "en" "fr" "es" "hu"]
+        urls  (map (comp client/api-endpoint #(str % ".wikipedia.org")) isos)
+        infos (pmap client/info urls)]
     (is (every? :version infos))))
 
 (deftest request-geo-coords
-  (let [config   (client/config-for-endpoint
-                  (client/endpoint-url "de.wikipedia.org"))
-        request  (client/request-with-params
-                 :prop   "coordinates"
-                 :titles ["Oslo" "Kopenhagen" "Berlin"])
-        response (deref (client/request! config request))
+  (let [request  (-> (client/request-with-params
+                      :prop   "coordinates"
+                      :titles ["Oslo" "Kopenhagen" "Berlin"])
+                     (assoc :url (client/api-endpoint "de.wikipedia.org")))
+        response (client/request! request)
         response (get-in response [:body :query :pages])]
     (is (every? :coordinates response))))
 
 (deftest request-categories
-  (let [config    (client/config-for-endpoint
-                   (client/endpoint-url "test.wikipedia.org"))
-        config    (assoc config :max-requests 3)
-        request   (client/request-with-params
-                 :list    "allcategories"
-                 :aclimit "100")
-        responses (s/stream->seq (client/requests! config request))]
-    (is (= 3 (count responses)))))
+  (let [request (->
+                (client/request-with-params :list "allcategories" :aclimit "100")
+                (assoc :url (client/api-endpoint "test.wikipedia.org")))]
+    (binding [client/*max-requests* 3]
+      (is (= 3 (count (client/requests! request)))))))

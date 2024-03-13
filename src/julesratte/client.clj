@@ -1,14 +1,11 @@
 (ns julesratte.client
   "MediaWiki API client, ported from Python's `mwclient` lib."
   (:require
+   [again.core :as again]
    [clojure.string :as str]
-   [taoensso.timbre :as log]
    [hato.client :as hc]
    [jsonista.core :as json]
-   [manifail :as f]
-   [manifold.deferred :as d]
-   [manifold.time]
-   [manifold.stream :as s]))
+   [taoensso.timbre :as log]))
 
 ;; ## API request parameter handling
 ;;
@@ -36,31 +33,11 @@
 
 ;; ## API request configuration
 
-(def default-http-client
-  (hc/build-http-client {:connect-timeout 5000
-                         :version         :http-2}))
-
-(defn create-session-client
-  []
-  (hc/build-http-client {:connect-timeout 5000
-                         :version         :http-2
-                         :cookie-policy   :all}))
-
-(defn config-for-endpoint
-  ([url]
-   (config-for-endpoint url default-http-client))
-  ([url http-client]
-   {:http-client  http-client
-    :url          url
-    :max-retries  3
-    :max-requests 100
-    :warn->error? true}))
-
-(defn endpoint-url
+(defn api-endpoint
   ([host]
-   (endpoint-url "https" host))
+   (api-endpoint "https" host))
   ([scheme host]
-   (endpoint-url scheme host "/w/api.php"))
+   (api-endpoint scheme host "/w/api.php"))
   ([scheme host path]
    (str scheme "://" host path)))
 
@@ -75,12 +52,17 @@
                  :format        "json"
                  :formatversion "2"
                  :errorformat   "plaintext"
-                 :maxlag        "5"}
-   :async?      true})
+                 :maxlag        "5"}})
+
+(def ^:dynamic *http-client*
+  (hc/build-http-client {:connect-timeout 5000
+                         :version         :http-2}))
 
 (defn request-with-params
   [& params]
-  (apply update base-request :form-params assoc params))
+  (-> (apply update base-request :form-params assoc params)
+      (update :form-params transform-params)
+      (assoc :http-client *http-client*)))
 
 (defn json-response?
   [{:keys [content-type]}]
@@ -100,8 +82,7 @@
     (cond-> response
       (json-response? response) (update :body read-json))
     (catch Throwable t
-      (d/error-deferred
-       (ex-info "Error parsing JSON response" response t)))))
+      (throw (ex-info "Error parsing JSON response" response t)))))
 
 (defn error->msg
   [{:keys [module code text]}]
@@ -120,24 +101,19 @@
     (when (and errors warnings) [""])
     (when warnings (cons "Warnings:" (map error->msg warnings))))))
 
-(def request-delay
-  (atom 0))
-
-(defn delay-request
-  []
-  (let [request-delay' @request-delay]
-    (if (pos? request-delay')
-      (manifold.time/in (* request-delay' 1000) #(reset! request-delay 0))
-      (d/success-deferred 0))))
-
 (defn retry?
   [{{:keys [errors]} :body}]
   (some #{"maxlag" "ratelimited"} (map :code errors)))
 
+(def ^:dynamic *warning->error?*
+  false)
+
 (defn error?
-  [{{::keys [warn->error?]}   :request
-    {:keys [errors warnings]} :body}]
-  (or errors (and warn->error? warnings)))
+  [{{:keys [errors warnings]} :body}]
+  (or errors (and *warning->error?* warnings)))
+
+(def request-delay
+  (atom 0))
 
 (defn handle-response
   "Check for error/warnings in response and extract body."
@@ -146,63 +122,52 @@
               uri (get request :body)
               (select-keys response [:request-time :status]))
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
-    (reset! request-delay (Integer/parseInt retry-after)))
+    (reset! request-delay (parse-long retry-after)))
   (cond
-    (retry? response) (d/error-deferred f/retry)
-    (error? response) (d/error-deferred
-                       (ex-info (response->error response) response))
+    (retry? response) (ex-info (response->error response)
+                               (assoc response ::retry? true))
+    (error? response) (ex-info (response->error response)
+                               (assoc response ::retry? false))
     :else             response))
 
-(defn handle-error
-  [^Throwable e]
-  (or
-   (and (f/marker? e) e)
-   (d/error-deferred (manifail.Aborted. e))))
+(def ^:dynamic *max-retries*
+  3)
 
-(defn handle-abort
-  [^manifail.Aborted e]
-  (d/error-deferred (ex-cause e)))
+(defn request-retry-strategy
+  []
+  (->> (again/multiplicative-strategy 500 1.5)
+       (again/randomize-strategy 0.5)
+       (again/max-retries *max-retries*)
+       (again/max-duration 10000)
+       (cons @request-delay)))
 
-(defn configure
-  [{:keys [url http-client] :as _config} request]
-  (->
-   request
-   (assoc :url url :http-client http-client)
-   (update :form-params transform-params)))
-
-(defn do-request!
-  [config request]
-  (d/->deferred (hc/request (configure config request))))
+(defn retry-request?
+  [{::again/keys [status exception]}]
+  (when (and (= status :retry) (some-> exception ex-data ::retry? false?))
+    (log/warnf exception "Aborting request")
+    ::again/fail))
 
 (defn request!
-  [{:keys [max-retries] :as config} request]
-  (->
-   (f/with-retries (f/retries max-retries)
-     (->
-      (delay-request)
-      (d/chain (fn [& _] (do-request! config request)))
-      (d/chain parse-response handle-response)
-      (d/catch handle-error)))
-   (d/catch manifail.Aborted handle-abort)))
+  [request]
+  (again/with-retries
+    {::again/strategy (request-retry-strategy)
+     ::again/callback retry-request?}
+    (-> (hc/request request) (parse-response) (handle-response))))
+
+(def ^:dynamic *max-requests*
+  100)
 
 (defn requests!
-  "Stream of API requests/responses based on continuations."
-  ([{:keys [max-requests] :as config} initial-request]
-   (let [responses (s/stream)]
-     (d/loop [request initial-request remaining (dec max-requests)]
-       (when-not (s/closed? responses)
-         (-> (request! config request)
-             (d/chain (fn [{{:keys [continue]} :body :as response}]
-                        (s/put! responses response)
-                        (if (and continue (pos? remaining))
-                          (d/recur
-                           (update request :form-params merge continue)
-                           (dec remaining))
-                          (s/close! responses))))
-             (d/catch' (fn [e]
-                         (log/debugf e "Error during API request %s" request)
-                         (s/close! responses))))))
-     responses)))
+  "Seq of API requests/responses based on continuations."
+  ([request]
+   (requests! request (dec *max-requests*)))
+  ([request remaining]
+   (let [{{:keys [continue]} :body :as response} (request! request)]
+     (lazy-seq
+      (cons response
+            (when (and continue (pos? remaining))
+              (requests! (update request :form-params merge continue)
+                         (dec remaining))))))))
 
 ;; ## Retrieve information about a MediaWiki instance.
 
@@ -210,7 +175,7 @@
   "Parses numeric version components."
   [v]
   (let [n (re-find #"\d+" v)]
-    (if n (Integer/parseInt n) v)))
+    (if n (parse-long n) v)))
 
 (defn- parse-version
   "Parses MediaWiki version strings."
@@ -230,14 +195,20 @@
    :site       site
    :namespaces (vals namespaces)})
 
-(def info-request
-  (request-with-params
-   :action "query"
-   :meta   #{"siteinfo" "userinfo"}
-   :siprop #{"general" "namespaces"}
-   :uiprop #{"groups" "rights"}))
+(defn info-request
+  [url]
+  (->
+   (request-with-params
+    :action "query"
+    :meta   #{"siteinfo" "userinfo"}
+    :siprop #{"general" "namespaces"}
+    :uiprop #{"groups" "rights"})
+   (assoc :url url)))
 
 (defn info
   "Retrieve information about a MediaWiki instance."
-  [config]
-  (d/chain (request! config info-request) parse-info))
+  [url]
+  (-> (info-request url) (request!) (parse-info)))
+
+(comment
+  (info (api-endpoint "www.wikidata.org")))

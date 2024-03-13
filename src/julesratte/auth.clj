@@ -1,70 +1,65 @@
 (ns julesratte.auth
   (:require
-   [julesratte.client :as client]
-   [manifold.deferred :as d]))
+   [hato.client :as hc]
+   [julesratte.client :as client]))
 
-(defn get-login-token
-  [response]
-  (get-in response [:body :query :tokens :logintoken]))
+(defn session-http-client
+  []
+  (hc/build-http-client {:connect-timeout 5000
+                         :version         :http-2
+                         :cookie-policy   :all}))
 
-(def login-token-request
-  (client/request-with-params
-   :action "query"
-   :meta "tokens"
-   :type "login"))
+(defn session-request
+  [url & params]
+  (-> (apply client/request-with-params params)
+      (assoc :url url)))
 
-(defn query-login-token!
-  [config]
-  (d/chain (client/request! config login-token-request) get-login-token))
+(defn login-token-request
+  [url]
+  (session-request url :action "query" :meta "tokens" :type "login"))
 
-(defn do-login!
-  [config user password login-token]
-  (->> (client/request-with-params
-        :action "login"
-        :lgname user
-        :lgpassword password
-        :lgtoken login-token)
-       (client/request! config)))
+(defn login-request
+  [url user password token]
+  (session-request url :action "login" :lgname user :lgpassword password
+                   :lgtoken token))
 
-(defn assert-successful-login
-  [response]
-  (if (= "Success" (get-in response [:body :login :result]))
-    response
-    (d/error-deferred (ex-info "Login failed" response))))
+(defn csrf-token-request
+  [url]
+  (session-request url :action "query" :meta "tokens"))
+
+(defn logout-request
+  [url csrf-token]
+  (session-request url :action "logout" :token csrf-token))
 
 (defn login!
-  [config user password]
-  (d/chain
-   (query-login-token! config)
-   (partial do-login! config user password)
-   assert-successful-login))
-
-(defn get-csrf-token
-  [response]
-  (get-in response [:body :query :tokens :csrftoken]))
-
-(def csrf-token-request
-  (client/request-with-params
-   :action "query"
-   :meta "tokens"))
-
-(defn query-csrf-token!
-  [config]
-  (d/chain (client/request! config csrf-token-request) get-csrf-token))
-
-(defn logout-callback
-  [config csrf-token]
-  (->> (client/request-with-params :action "logout" :token csrf-token)
-       (client/request! config)))
+  [url user password]
+  (let [request  (login-token-request url)
+        response (client/request! request)
+        token    (get-in response [:body :query :tokens :logintoken])
+        request  (login-request url user password token)
+        response (client/request! request)
+        result   (get-in response [:body :login :result])]
+    (when-not (= "Success" result)
+      (throw (ex-info "Login failed" response)))))
 
 (defn logout!
-  [config]
-  (d/chain (query-csrf-token! config) (partial logout-callback config)))
+  [url]
+  (as-> url  $
+    (client/request! (csrf-token-request $))
+    (get-in $ [:body :query :tokens :csrftoken])
+    (client/request! (logout-request url $))))
 
-(defn login-callback
-  [config f _response]
-  (d/finally (f config) (partial logout! config)))
 
-(defn with-login-session
-  [config user password f]
-  (d/chain (login! config user password) (partial login-callback config f)))
+(defmacro with-login
+  [credentials & body]
+  `(let [credentials# ~credentials
+         url#      (:url credentials#)]
+     (binding [julesratte.client/*http-client* (session-http-client)]
+       (try
+         (login! url# (:user credentials#) (:password credentials#))
+         ~@body
+         (finally
+           (logout! url#))))))
+
+(comment
+  (with-login {} true))

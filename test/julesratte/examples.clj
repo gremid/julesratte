@@ -2,51 +2,32 @@
   (:require
    [julesratte.client :as client]
    [julesratte.dump :as dump]
-   [julesratte.page :as page]
-   [manifold.stream :as s]))
+   [julesratte.page :as page]))
 
-(let [pages (page/request-by-title
-              (client/base-request "de.wiktionary.org")
-              "Pfirsich" "Apfel" "Birnen" "Erdbeeren")]
-  (into []
-        (map (juxt :title :user :timestamp (comp #(subs % 0 20) :text)))
-        (s/stream->seq pages)))
-;; => [["Apfel" "UT-Bot" "2022-08-17T10:46:42Z" "{{Siehe auch|[[apfel"]
-;;     ["Pfirsich" "LarsvonSpeck" "2022-04-10T14:53:19Z" "== Pfirsich ({{Sprac"]
-;;     ["Birnen" "BetterkBot" "2017-05-16T16:49:49Z" "== Birnen ({{Sprache"]
-;;     ["Erdbeeren" "DerbethBot" "2022-01-29T09:40:52Z" "== Erdbeeren ({{Spra"]]
+(->> (page/request-by-title (client/api-endpoint "de.wiktionary.org")
+                            "Pfirsich" "Kirsche" "Birnen" "Erdbeeren")
+     (into [] (map (juxt :title :user :timestamp (comp #(subs % 0 5) :text)))))
+
+;; => [["Kirsche" "EPIC" "2024-02-01T10:18:54Z" "== Ki"]
+;;     ["Pfirsich" "Dr. Karl-Heinz Best" "2023-09-21T09:21:06Z" "== Pf"]
+;;     ["Birnen" "BetterkBot" "2017-05-16T16:49:49Z" "== Bi"]
+;;     ["Erdbeeren" "DerbethBot" "2022-01-29T09:40:52Z" "== Er"]]
 
 
-(let [pages (page/request-random (client/base-request "de.wikipedia.org") 5)]
-  (into []
-        (map (juxt :title :user :timestamp (comp #(subs % 0 20) :text)))
-        (s/stream->seq pages)))
-;; => [["Gruppe (Feuerwehr)"
-;;      "2A02:6D40:309E:8101:209A:8BBC:B269:46E6"
-;;      "2022-02-16T17:52:51Z"
-;;      "Innerhalb der [[Feue"]
-;;     ["Badminton Asia Confederation"
-;;      "Florentyna"
-;;      "2022-07-05T05:50:24Z"
-;;      "Die '''Badminton Asi"]
-;;     ["Roger Hume" "WKP-Benson" "2022-01-10T11:34:14Z" "'''Roger Hume''' (* "]
-;;     ["Tempo (Brauerei)"
-;;      "Chemiewikibm"
-;;      "2022-07-12T13:10:56Z"
-;;      "[[Datei:Makabi beer."]
-;;     ["Brzeziński (Adelsgeschlecht)"
-;;      "Drc4891"
-;;      "2022-08-10T13:28:11Z"
-;;      "'''Brzeziński''' (au"]]
+(->> (page/request-random (client/api-endpoint "de.wikipedia.org") 5)
+     (into [] (map (juxt :title :user :timestamp))))
+
+;; => [["Bovines Leukämie-Virus" "InternetArchiveBot" "2023-06-18T06:22:54Z"]
+;;     ["Jos Murer" "Bph" "2024-02-02T12:56:49Z"]
+;;     ["Distrikt Santa Rosa de Quives" "Aka" "2024-01-22T11:54:41Z"]
+;;     ["Zinédine Ould Khaled" "Phzh" "2024-02-03T15:15:19Z"]
+;;     ["Mōkihinui River" "Du Hugin Skulblaka" "2024-01-29T11:04:59Z"]]
 
 (with-open [stream     (dump/->input-stream "dewiktionary")
             xml-events (dump/xml-event-reader stream)]
-  (into
-   []
-   (comp
-    (take 10)
-    (map (juxt :title :username :timestamp)))
-   (dump/parse-revisions xml-events)))
+  (->> (dump/parse-revisions xml-events)
+       (into [] (comp (take 10) (map (juxt :title :username :timestamp))))))
+
 ;; => [["MediaWiki:Linktrail" "SteffenB" "2004-06-05T22:14:21Z"]
 ;;     ["MediaWiki:Mainpage" "Thogo" "2007-11-07T21:10:09Z"]
 ;;     ["MediaWiki:Aboutpage" "Pajz" "2006-08-23T15:20:06Z"]

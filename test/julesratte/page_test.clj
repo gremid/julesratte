@@ -2,20 +2,15 @@
   (:require
    [clojure.test :refer [deftest is]]
    [julesratte.client :as client]
-   [julesratte.page :as page]
-   [manifold.stream :as s]))
+   [julesratte.page :as page]))
 
 (deftest request-pages-by-title
-  (let [titles #{"Pfirsich" "Apfel" "Birnen" "Erdbeeren"}
-        config (client/config-for-endpoint
-                (client/endpoint-url "de.wiktionary.org"))
-        pages  (apply page/request-by-title config titles)
-        pages  (vec (s/stream->seq pages))]
+  (let [url    (client/api-endpoint "de.wiktionary.org")
+        titles #{"Pfirsich" "Apfel" "Birnen" "Erdbeeren"}
+        pages  (apply page/request-by-title url titles)]
     (is (= titles (into #{} (map :title pages))))))
 
 (deftest request-random-pages
-  (let [config (client/config-for-endpoint
-                (client/endpoint-url "de.wikipedia.org"))
-        pages  (page/request-random config 5)
-        pages  (vec (s/stream->seq pages))]
+  (let [url   (client/api-endpoint "de.wikipedia.org")
+        pages (page/request-random url 5)]
     (is (<= 5 (count pages)))))

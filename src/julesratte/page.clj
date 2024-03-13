@@ -1,8 +1,7 @@
 (ns julesratte.page
   (:require
    [clojure.string :as str]
-   [julesratte.client :as client]
-   [manifold.stream :as s]))
+   [julesratte.client :as client]))
 
 (defn main-namespace?
   [title]
@@ -13,12 +12,14 @@
   (-> title (str/replace " " "_") str/trim))
 
 (defn revisions-request-with-params
-  [& params]
-  (->> (concat [:prop    "revisions"
-                :rvprop  ["user" "timestamp" "content"]
-                :rvslots "*"]
-               params)
-       (apply client/request-with-params)))
+  [url & params]
+  (as-> params $
+    (concat [:prop    "revisions"
+             :rvprop  ["user" "timestamp" "content"]
+             :rvslots "*"]
+            $)
+    (apply client/request-with-params $)
+    (assoc $ :url url)))
 
 (defn extract-revision
   [{:keys [title] [revision] :revisions}]
@@ -37,31 +38,24 @@
    (filter (every-pred :title :text))))
 
 (defn request-revisions
-  ([config]
-   (request-revisions config (revisions-request-with-params)))
-  ([config request]
-   (->> (client/requests! config request)
-        (s/transform extract-revisions-xf))))
+  [url & params]
+  (->> (apply revisions-request-with-params url params)
+       (client/requests!)
+       (sequence extract-revisions-xf)))
 
 (defn request-by-title
-  [config & titles]
-  (request-revisions
-   config
-   (revisions-request-with-params
-    :titles (into #{} (map encode-title) titles))))
+  [url & titles]
+  (request-revisions url :titles (into #{} (map encode-title) titles)))
 
 (def max-random-pages-per-request
   50)
 
 (defn request-random
-  [config min-n]
+  [url min-n]
   (let [limit-per-req (max 1 (min max-random-pages-per-request min-n))
         max-requests  (Math/ceil (/ min-n limit-per-req))]
-    (request-revisions
-     (assoc config :max-requests max-requests)
-     (revisions-request-with-params
-      :generator            "random"
-      :grnnamespace         "0"
-      :grnlimit             (str limit-per-req)))))
-
-
+    (binding [client/*max-requests* max-requests]
+      (request-revisions url
+                         :generator "random"
+                         :grnnamespace "0"
+                         :grnlimit (str limit-per-req)))))
