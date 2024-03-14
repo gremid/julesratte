@@ -6889,7 +6889,7 @@
   "P7605": "Hunterian transliteration",
   "P7606": "Czech municipality ID",
   "P7607": "WikiTree category or space",
-  "P7608": "Englandstats.com Soccer ID",
+  "P7608": "Englandstats.com player ID",
   "P7609": "SHARE Catalogue work ID",
   "P7610": "Taiwan Cinema company ID",
   "P7611": "Taiwan Cinema film ID",
@@ -11719,5 +11719,6 @@
   "P12537": "EJAtlas ID",
   "P12538": "Galician Authors in the BUSC ID",
   "P12539": "Premier League player ID",
-  "P12540": "Ludzie Nauki ID"
+  "P12541": "Ludzie Nauki ID (new)",
+  "P12542": "WhatsApp channel ID"
 }
