@@ -219,5 +219,4 @@
                   *print-readably* true]
           (doseq [t (mapcat :types entries)] (println (pr-str t))))))
     (finally
-      (shutdown-agents)))
-  )
+      (shutdown-agents))))
