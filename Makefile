@@ -6,6 +6,7 @@ src/julesratte/wikidata/properties.json:
 
 all: resources/julesratte/wikidata/lexemes.json.gz
 resources/julesratte/wikidata/lexemes.json.gz:
+	mkdir -p `dirname $@`
 	curl -o $@ https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz
 
 all: resources/julesratte/wiktionary/de.edn
