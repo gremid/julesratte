@@ -13,9 +13,8 @@
                                        :exclusions  [org.clojure/clojure
                                                      org.clojure/clojurescript]}}
  :aliases
- {:build {:ns-default build}
-  :test  {:extra-paths ["test"]
-          :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.87.1366"}
-                        com.fzakaria/slf4j-timbre       {:mvn/version "0.4.1"}
-                        io.github.cdimascio/dotenv-java {:mvn/version "3.0.0"}}
-          :exec-fn     kaocha.runner/exec-fn}}}
+ {:test {:extra-paths ["test"]
+         :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.87.1366"}
+                       com.fzakaria/slf4j-timbre       {:mvn/version "0.4.1"}
+                       io.github.cdimascio/dotenv-java {:mvn/version "3.0.0"}}
+         :exec-fn     kaocha.runner/exec-fn}}}
