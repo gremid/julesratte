@@ -48,3 +48,13 @@
         (doto (io/make-parents))
         (spit wd-props))))
 
+(def lexemes-dump-url
+  "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz")
+
+(def lexemes-dump
+  (io/file "resources" "julesratte" "wikidata" "lexemes.json.gz"))
+
+(defn download-lexemes-dump
+  [& _]
+  (io/make-parents lexemes-dump)
+  (check-proc! ["curl" "-o" (str lexemes-dump) lexemes-dump-url]))
