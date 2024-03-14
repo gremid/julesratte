@@ -1,4 +1,4 @@
-# julesratte – a Clojure MediaWiki client
+# julesratte – a MediaWiki/Wikibase client
 
 <img src="doc/julesratte_small.png"
  alt="Jules Ratte (by Klaus Ensikat)"
@@ -10,7 +10,7 @@
 _– Peter Hacks: Jules Ratte. In: ders. Kinderkurzweil. Berlin. 1986._
 
 This library provides **API access to MediaWiki-based sites**, mainly those
-comprising the Wikipedia/Wikimedia landscape.
+comprising the Wikidata/Wikipedia/Wikimedia landscape.
 
 ## Features
 
@@ -21,6 +21,7 @@ comprising the Wikipedia/Wikimedia landscape.
   proper bot behavior
 * Parsing of MediaWiki markup into Clojure data structures via
   [Sweble](https://en.wikipedia.org/wiki/Sweble)
+* Access to Wikidata via [Wikidata Query Service](https://query.wikidata.org/)
 
 ## Installation
 
@@ -37,7 +38,8 @@ io.github.gremid/julesratte {:git/sha "..."}
   (:require
    [julesratte.client :as client]
    [julesratte.dump :as dump]
-   [julesratte.page :as page]))
+   [julesratte.page :as page]
+   [julesratte.wikidata :as wd]))
 
 (->> (page/request-by-title (client/api-endpoint "de.wiktionary.org")
                             "Pfirsich" "Kirsche" "Birnen" "Erdbeeren")
@@ -73,9 +75,21 @@ io.github.gremid/julesratte {:git/sha "..."}
 ;;     ["MediaWiki:Sitesupport" "Melancholie" "2005-12-28T04:21:16Z"]
 ;;     ["MediaWiki:Faqpage" "Melancholie" "2004-11-29T22:03:13Z"]
 ;;     ["MediaWiki:Edithelppage" "Melancholie" "2004-11-29T21:54:46Z"]]
-```
-## License
 
-Copyright 2022-2024 Gregor Middell.
+(wd/describe (wd/entity "Douglas Adams"))
+
+;; => {:xml:lang "en",
+;;     :value "English author and humourist (1952–2001)",
+;;     :type "literal"}
+```
+## Contributors
+
+* Gregor Middell, main author
+* Jack Rusher, author of
+  [Mundaneum](https://github.com/jackrusher/mundaneum), a thin Clojure
+  wrapper around Wikidata, that served as the basis for Wikidata
+  support in this library
+
+## License
 
 This project is licensed under the GNU General Public License v3.0.

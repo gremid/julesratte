@@ -1,4 +1,4 @@
-(ns julesratte.wiktionary-de
+(ns julesratte.wiktionary.de
   (:require
    [clojure.string :as str]
    [julesratte.dump :as dump]
@@ -204,16 +204,20 @@
 
 (defn -main
   [& _]
-  (with-open [input     (dump/->input-stream "dewiktionary")
-              xml-input (dump/xml-event-reader input)]
-    (let [revisions (dump/parse-revisions xml-input)
-          revisions (filter (comp entry-page? :title) revisions)
-          revisions (filter (comp not-empty :text) revisions)
-          texts     (pmap (comp wt/parse :text) revisions)
-          entries   (mapcat entries texts)
-          entries   (filter #(= "Deutsch" (:lang %)) entries)]
-      (binding [*print-length*   nil
-                *print-dup*      nil
-                *print-level*    nil
-                *print-readably* true]
-        (doseq [t (mapcat :types entries)] (println (pr-str t)))))))
+  (try
+    (with-open [input     (dump/->input-stream "dewiktionary")
+                xml-input (dump/xml-event-reader input)]
+      (let [revisions (dump/parse-revisions xml-input)
+            revisions (filter (comp entry-page? :title) revisions)
+            revisions (filter (comp not-empty :text) revisions)
+            texts     (pmap (comp wt/parse :text) revisions)
+            entries   (mapcat entries texts)
+            entries   (filter #(= "Deutsch" (:lang %)) entries)]
+        (binding [*print-length*   nil
+                  *print-dup*      nil
+                  *print-level*    nil
+                  *print-readably* true]
+          (doseq [t (mapcat :types entries)] (println (pr-str t))))))
+    (finally
+      (shutdown-agents)))
+  )

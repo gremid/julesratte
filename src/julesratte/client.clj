@@ -4,7 +4,7 @@
    [again.core :as again]
    [clojure.string :as str]
    [hato.client :as hc]
-   [jsonista.core :as json]
+   [julesratte.json :as json]
    [taoensso.timbre :as log]))
 
 ;; ## API request parameter handling
@@ -63,26 +63,6 @@
   (-> (apply update base-request :form-params assoc params)
       (update :form-params transform-params)
       (assoc :http-client *http-client*)))
-
-(defn json-response?
-  [{:keys [content-type]}]
-  (= :application/json content-type))
-
-(defn read-json
-  [v]
-  (json/read-value v json/keyword-keys-object-mapper))
-
-(defn write-json
-  [v]
-  (json/write-value-as-string v json/keyword-keys-object-mapper))
-
-(defn parse-response
-  [response]
-  (try
-    (cond-> response
-      (json-response? response) (update :body read-json))
-    (catch Throwable t
-      (throw (ex-info "Error parsing JSON response" response t)))))
 
 (defn error->msg
   [{:keys [module code text]}]
@@ -152,7 +132,7 @@
   (again/with-retries
     {::again/strategy (request-retry-strategy)
      ::again/callback retry-request?}
-    (-> (hc/request request) (parse-response) (handle-response))))
+    (-> (hc/request request) (json/parse-http-response) (handle-response))))
 
 (def ^:dynamic *max-requests*
   100)

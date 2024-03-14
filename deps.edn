@@ -7,10 +7,14 @@
   camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
   org.sweble.wikitext/swc-parser-lazy {:mvn/version "3.1.9"}
   org.apache.commons/commons-compress {:mvn/version "1.26.1"}
-  listora/again                       {:mvn/version "1.0.0"}}
+  listora/again                       {:mvn/version "1.0.0"}
+  com.yetanalytics/flint              {:mvn/version "0.3.0"
+                                       :exclusions  [org.clojure/clojure
+                                                     org.clojure/clojurescript]}}
  :aliases
- {:test {:extra-paths ["test"]
-         :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.87.1366"}
-                       com.fzakaria/slf4j-timbre       {:mvn/version "0.4.1"}
-                       io.github.cdimascio/dotenv-java {:mvn/version "3.0.0"}}
-         :exec-fn     kaocha.runner/exec-fn}}}
+ {:build {:ns-default build}
+  :test  {:extra-paths ["test"]
+          :extra-deps  {lambdaisland/kaocha             {:mvn/version "1.87.1366"}
+                        com.fzakaria/slf4j-timbre       {:mvn/version "0.4.1"}
+                        io.github.cdimascio/dotenv-java {:mvn/version "3.0.0"}}
+          :exec-fn     kaocha.runner/exec-fn}}}

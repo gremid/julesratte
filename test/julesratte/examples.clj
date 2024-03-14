@@ -2,7 +2,8 @@
   (:require
    [julesratte.client :as client]
    [julesratte.dump :as dump]
-   [julesratte.page :as page]))
+   [julesratte.page :as page]
+   [julesratte.wikidata :as wd]))
 
 (->> (page/request-by-title (client/api-endpoint "de.wiktionary.org")
                             "Pfirsich" "Kirsche" "Birnen" "Erdbeeren")
@@ -38,3 +39,9 @@
 ;;     ["MediaWiki:Sitesupport" "Melancholie" "2005-12-28T04:21:16Z"]
 ;;     ["MediaWiki:Faqpage" "Melancholie" "2004-11-29T22:03:13Z"]
 ;;     ["MediaWiki:Edithelppage" "Melancholie" "2004-11-29T21:54:46Z"]]
+
+(wd/describe (wd/entity "Douglas Adams"))
+
+;; => {:xml:lang "en",
+;;     :value "English author and humourist (1952–2001)",
+;;     :type "literal"}
