@@ -76,10 +76,11 @@ io.github.gremid/julesratte {:git/sha "..."}
 ;;     ["MediaWiki:Faqpage" "Melancholie" "2004-11-29T22:03:13Z"]
 ;;     ["MediaWiki:Edithelppage" "Melancholie" "2004-11-29T21:54:46Z"]]
 
-(wd/describe (wd/entity "Douglas Adams"))
+(wd/describe (wd/entity "Wikidata"))
 
 ;; => {:xml:lang "en",
-;;     :value "English author and humourist (1952–2001)",
+;;     :value
+;;     "free knowledge graph hosted by Wikimedia and edited by volunteers",
 ;;     :type "literal"}
 ```
 ## Contributors
