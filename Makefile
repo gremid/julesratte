@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 all: src/julesratte/wikidata/properties.json
 src/julesratte/wikidata/properties.json:
-	docker run --rm -it maxlath/wikibase-cli props -e https://query.wikidata.org/sparql >$@
+	docker run --rm -it maxlath/wikibase-cli:17.0.10 props -e https://query.wikidata.org/sparql >$@
 
 all: resources/julesratte/wikidata/lexemes.json.gz
 resources/julesratte/wikidata/lexemes.json.gz:
