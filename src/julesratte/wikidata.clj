@@ -54,10 +54,10 @@
   and convert them into a namespaced keyword. Returns nil if the
   pattern match is not successful."
   [pattern uri]
-    (let [[_ base-uri trimmed-value] (re-find pattern uri)]
-      (when (uri->prefix base-uri)
-        (when trimmed-value
-          (keyword (uri->prefix base-uri) trimmed-value)))))
+  (let [[_ base-uri trimmed-value] (re-find pattern uri)]
+    (when (uri->prefix base-uri)
+      (when trimmed-value
+        (keyword (uri->prefix base-uri) trimmed-value)))))
 
 (defn clojurize-uri
   [value]
@@ -70,7 +70,7 @@
   (condp = datatype
     "http://www.w3.org/2001/XMLSchema#decimal"  (parse-double value)
     "http://www.w3.org/2001/XMLSchema#integer"  (parse-long value)
-    "http://www.w3.org/2001/XMLSchema#dateTime" value #_(tick/instant value)
+    "http://www.w3.org/2001/XMLSchema#dateTime" value #_ (tick/instant value)
     nil))
 
 (defn clojurize-values*
@@ -205,29 +205,14 @@
        (hc/request)
        (parse-search-results))))
 
-(defn entity-data-url
-  [item-id]
-  (str "https://www.wikidata.org/wiki/Special:EntityData/" item-id ".json"))
-
-;; gets everything for the entity; :claims key has the properties
-(defn entity-data
-  [item]
-  (let [item-id (name item)]
-    (-> {:method       :get
-         :url          (entity-data-url item-id)
-         :query-params {:format "json"}}
-        (hc/request)
-        (json/parse-http-response)
-        (get-in [:body :entities])
-        (get (keyword item-id)))))
-
 (defn clojurize-claim
   "Convert the values in `result` to Clojure types."
-  [{:keys [datatype] {:keys [id value] :as datavalue} :datavalue :as _snak}]
+  [{:keys [datatype] {:keys [value] :as datavalue} :datavalue :as _snak}]
   (condp = datatype
     "monolingualtext"   {(-> value :language keyword) (-> value :text)}
-    "wikibase-entityid" (keyword (str "wd/" (-> id)))
+    "wikibase-entityid" (keyword (str "wd/" (-> value :id)))
     "wikibase-item"     (keyword (str "wd/" (-> value :id)))
+    "wikibase-lexeme"   (keyword (str "wd/" (-> value :id)))
     "commonsMedia"      value
     "string"            value
     "external-id"       value
@@ -244,11 +229,24 @@
     (assoc m label values)))
 
 (defn clojurize-claims
-  [{:keys [claims] :as _entity-data}]
-  (reduce clojurize-claims* {} claims))
+  [entity-data]
+  (update entity-data :claims #(reduce clojurize-claims* {} %)))
 
-(def claims
-  (comp clojurize-claims entity-data))
+(defn entity-data-url
+  [item-id]
+  (str "https://www.wikidata.org/wiki/Special:EntityData/" item-id ".json"))
+
+(defn entity-data
+  [item]
+  (let [item-id (name item)]
+    (-> {:method       :get
+         :url          (entity-data-url item-id)
+         :query-params {:format "json"}}
+        (hc/request)
+        (json/parse-http-response)
+        (get-in [:body :entities])
+        (get (keyword item-id))
+        (clojurize-claims))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

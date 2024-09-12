@@ -2,7 +2,9 @@
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
+   [hato.client :as hc]
    [julesratte.json :as json]
+   [julesratte.wikidata :as wd]
    [taoensso.timbre :as log])
   (:import
    (java.util.zip GZIPInputStream)))
@@ -15,17 +17,28 @@
    (partition-all 32)
    (mapcat (partial pmap json/read-value))))
 
-(def dump-resource
-  (io/resource "julesratte/wikidata/lexemes.json.gz"))
+(defn open-local-dump
+  []
+  (io/input-stream (io/resource "julesratte/wikidata/lexemes.json.gz")))
+
+(defn open-remote-dump
+  []
+  (->
+   "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz"
+   (hc/get {:as :stream :version :http-1.1}) :body))
+
+(defn read-dump
+  [stream]
+  (let [gz-stream (GZIPInputStream. stream)
+        reader    (io/reader gz-stream)]
+    (sequence parse-dump-xf (line-seq reader))))
 
 (defn -main
   [& _]
   (log/handle-uncaught-jvm-exceptions!)
   (try
-    (with-open [stream (io/input-stream dump-resource)
-                stream (GZIPInputStream. stream)
-                reader (io/reader stream)]
-      (let [n (count (sequence parse-dump-xf (line-seq reader)))]
-        (log/infof "Lexemes: %,d" n)))
+    (with-open [input (open-remote-dump)]
+      (doseq [batch (partition-all 1000 (read-dump input))]
+        (log/info (wd/clojurize-claims (first batch)))))
     (finally
       (shutdown-agents))))
