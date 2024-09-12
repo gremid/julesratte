@@ -78,10 +78,7 @@ io.github.gremid/julesratte {:git/sha "..."}
 
 (wd/describe (wd/entity "Wikidata"))
 
-;; => {:xml:lang "en",
-;;     :value
-;;     "free knowledge graph hosted by Wikimedia and edited by volunteers",
-;;     :type "literal"}
+;; => "free knowledge graph hosted by Wikimedia and edited by volunteers"
 ```
 ## Contributors
 

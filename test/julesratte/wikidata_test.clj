@@ -3,5 +3,5 @@
             [clojure.test :refer [deftest is]]))
 
 (deftest entity-description
-  (is (map? (wd/describe (wd/entity "Wikidata")))))
+  (is (string? (wd/describe (wd/entity "Wikidata")))))
 

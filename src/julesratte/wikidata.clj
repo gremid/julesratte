@@ -71,7 +71,7 @@
     "http://www.w3.org/2001/XMLSchema#decimal"  (parse-double value)
     "http://www.w3.org/2001/XMLSchema#integer"  (parse-long value)
     "http://www.w3.org/2001/XMLSchema#dateTime" value #_ (tick/instant value)
-    nil))
+    nil                                         value))
 
 (defn clojurize-values*
   [[k {:keys [type value datatype] :as v}]]
