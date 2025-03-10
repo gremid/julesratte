@@ -3,7 +3,17 @@
    [camel-snake-kebab.core :as csk]
    [clojure.java.io :as io]
    [jsonista.core :as json]
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [clojure.java.process :refer [exec]]))
+
+(def properties-source
+  (io/resource "julesratte/wikidata/properties.json"))
+
+(defn download!
+  [& _]
+  (spit (io/file properties-source)
+        (exec "docker" "run" "--rm" "maxlath/wikibase-cli:17.0.10"
+              "props" "-e" "https://query.wikidata.org/sparql")))
 
 (defn label->kw
   [s]
@@ -13,9 +23,9 @@
       (csk/->kebab-case-keyword)))
 
 (def wdt
-  (with-open [r (io/reader (io/resource "julesratte/wikidata/properties.json"))]
+  (with-open [r (io/reader properties-source)]
     (reduce
-     (fn [m [id label]] (assoc m (label->kw label) (keyword (str "wdt/" id))))
+     (fn [m [id label]] (assoc m (label->kw (or label id)) (keyword (str "wdt/" id))))
      {}
      (json/read-value r))))
 
