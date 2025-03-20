@@ -15,30 +15,29 @@
    (filter #(< 2 (count %)))
    (map #(str/replace % #",$" ""))
    (partition-all 32)
-   (mapcat (partial pmap json/read-value))))
+   (mapcat (partial pmap (comp wd/clojurize json/read-value)))))
 
-(defn open-local-dump
-  []
-  (io/input-stream (io/resource "julesratte/wikidata/lexemes.json.gz")))
-
-(defn open-remote-dump
+(defn read-dump
   []
   (->
    "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz"
-   (hc/get {:as :stream :version :http-1.1}) :body))
+   (hc/get {:as :stream :version :http-1.1}) :body
+   (io/input-stream) (GZIPInputStream.) (io/reader)))
 
-(defn read-dump
-  [stream]
-  (let [gz-stream (GZIPInputStream. stream)
-        reader    (io/reader gz-stream)]
-    (sequence parse-dump-xf (line-seq reader))))
+(defn parse-dump
+  [reader]
+  (sequence parse-dump-xf (line-seq reader)))
 
 (defn -main
   [& _]
   (log/handle-uncaught-jvm-exceptions!)
   (try
-    (with-open [input (open-remote-dump)]
-      (doseq [batch (partition-all 1000 (read-dump input))]
-        (log/info (wd/clojurize-claims (first batch)))))
+    (with-open [dump (read-dump)]
+      (doseq [batch (partition-all 1000 (parse-dump dump))]
+        (log/info (first batch))))
     (finally
       (shutdown-agents))))
+
+(comment
+  (with-open [r (read-dump)]
+    (into [] (comp (drop 100) (take 20)) (parse-dump r))))
