@@ -59,10 +59,9 @@
                          :version         :http-2}))
 
 (defn request-with-params
-  [& params]
-  (-> (apply update base-request :form-params assoc params)
-      (update :form-params transform-params)
-      (assoc :http-client *http-client*)))
+  [params]
+  (-> (apply update base-request :form-params merge params)
+      (update :form-params transform-params)))
 
 (defn error->msg
   [{:keys [module code text]}]
@@ -132,7 +131,8 @@
   (again/with-retries
     {::again/strategy (request-retry-strategy)
      ::again/callback retry-request?}
-    (-> (hc/request request) (json/parse-http-response) (handle-response))))
+    (-> request (assoc :http-client *http-client*) (hc/request)
+        (json/parse-http-response) (handle-response))))
 
 (def ^:dynamic *max-requests*
   100)
@@ -175,20 +175,17 @@
    :site       site
    :namespaces (vals namespaces)})
 
-(defn info-request
-  [url]
-  (->
-   (request-with-params
-    :action "query"
+(def info-request
+  (request-with-params
+   {:action "query"
     :meta   #{"siteinfo" "userinfo"}
     :siprop #{"general" "namespaces"}
-    :uiprop #{"groups" "rights"})
-   (assoc :url url)))
+    :uiprop #{"groups" "rights"}}))
 
 (defn info
   "Retrieve information about a MediaWiki instance."
   [url]
-  (-> (info-request url) (request!) (parse-info)))
+  (-> (assoc info-request :url url) (request!) (parse-info)))
 
 (comment
   (info (api-endpoint "www.wikidata.org")))

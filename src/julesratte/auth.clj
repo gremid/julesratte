@@ -9,34 +9,34 @@
                          :version         :http-2
                          :cookie-policy   :all}))
 
-(defn session-request
-  [url & params]
-  (-> (apply client/request-with-params params)
-      (assoc :url url)))
-
-(defn login-token-request
-  [url]
-  (session-request url :action "query" :meta "tokens" :type "login"))
+(def login-token-request
+  (client/request-with-params {:action "query" :meta "tokens" :type "login"}))
 
 (defn login-request
-  [url user password token]
-  (session-request url :action "login" :lgname user :lgpassword password
-                   :lgtoken token))
+  [user password token]
+  (client/request-with-params {:action "login"
+                               :lgname user
+                               :lgpassword password
+                               :lgtoken token}))
 
-(defn csrf-token-request
+(def csrf-token-request
+  (client/request-with-params {:action "query" :meta "tokens"}))
+
+(defn csrf-token
   [url]
-  (session-request url :action "query" :meta "tokens"))
+  (-> (client/request! (assoc csrf-token-request :url url))
+      (get-in [:body :query :tokens :csrftoken])))
 
 (defn logout-request
-  [url csrf-token]
-  (session-request url :action "logout" :token csrf-token))
+  [csrf-token]
+  (client/request-with-params {:action "logout" :token csrf-token}))
 
 (defn login!
   [url user password]
-  (let [request  (login-token-request url)
+  (let [request  (assoc login-token-request :url url)
         response (client/request! request)
         token    (get-in response [:body :query :tokens :logintoken])
-        request  (login-request url user password token)
+        request  (assoc (login-request user password token) :url url)
         response (client/request! request)
         result   (get-in response [:body :login :result])]
     (when-not (= "Success" result)
@@ -44,11 +44,7 @@
 
 (defn logout!
   [url]
-  (as-> url  $
-    (client/request! (csrf-token-request $))
-    (get-in $ [:body :query :tokens :csrftoken])
-    (client/request! (logout-request url $))))
-
+  (client/request! (assoc (logout-request (csrf-token url)) :url url)))
 
 (defmacro with-login
   [credentials & body]

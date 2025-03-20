@@ -11,8 +11,8 @@
 
 (deftest request-geo-coords
   (let [request  (-> (client/request-with-params
-                      :prop   "coordinates"
-                      :titles ["Oslo" "Kopenhagen" "Berlin"])
+                      {:prop   "coordinates"
+                       :titles ["Oslo" "Kopenhagen" "Berlin"]})
                      (assoc :url (client/api-endpoint "de.wikipedia.org")))
         response (client/request! request)
         response (get-in response [:body :query :pages])]
@@ -20,7 +20,7 @@
 
 (deftest request-categories
   (let [request (->
-                (client/request-with-params :list "allcategories" :aclimit "100")
-                (assoc :url (client/api-endpoint "test.wikipedia.org")))]
+                 (client/request-with-params {:list "allcategories" :aclimit "100"})
+                 (assoc :url (client/api-endpoint "test.wikipedia.org")))]
     (binding [client/*max-requests* 3]
       (is (= 3 (count (client/requests! request)))))))
