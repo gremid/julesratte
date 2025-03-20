@@ -1,10 +1,16 @@
 (ns julesratte.wikidata
   (:require
+   [clojure.java.io :as io]
    [clojure.walk]
    [com.yetanalytics.flint :as f]
    [hato.client :as hc]
+   [julesratte.client :as client]
    [julesratte.json :as json]
-   [julesratte.wikidata.properties :refer [wdt->label]]))
+   [clojure.string :as str]
+   [camel-snake-kebab.core :as csk]))
+
+(def ^:dynamic *lang*
+  :en)
 
 (def prefixes
   "RDF prefixes automatically supported by the WikiData query service."
@@ -42,54 +48,58 @@
    :xsd      "<http://www.w3.org/2001/XMLSchema#>"})
 
 (def uri->prefix
-  "Reverse lookup table from RDF namespace url to prefix name. Used by
-  `uri->keyword`."
   (reduce
    (fn [m [k v]] (assoc m (subs v 1 (dec (count v))) (str (name k))))
    {}
    prefixes))
 
 (defn uri->keyword
-  "Use regex `pattern` to extract the base and final portions of `uri`
-  and convert them into a namespaced keyword. Returns nil if the
-  pattern match is not successful."
   [pattern uri]
   (let [[_ base-uri trimmed-value] (re-find pattern uri)]
-    (when (uri->prefix base-uri)
-      (when trimmed-value
-        (keyword (uri->prefix base-uri) trimmed-value)))))
+    (when trimmed-value
+      (when-let [prefix (uri->prefix base-uri)]
+        (keyword prefix trimmed-value)))))
 
-(defn clojurize-uri
-  [value]
-  (or (uri->keyword #"(.*#)(.*)$" value)
-      (uri->keyword #"(.*/)([^/]*)$" value)
-      value))
+(defn clojurize-query-result-value
+  [{:keys [type value datatype] :as v}]
+  (condp = type
+    "uri"     (or (uri->keyword #"(.*#)(.*)$" value)
+                  (uri->keyword #"(.*/)([^/]*)$" value)
+                  value)
+    "literal" (condp = datatype
+                "http://www.w3.org/2001/XMLSchema#decimal" (parse-double value)
+                "http://www.w3.org/2001/XMLSchema#integer" (parse-long value)
+                "http://www.w3.org/2001/XMLSchema#dateTime" value
+                value)
+    v))
 
-(defn clojurize-literal
-  [datatype value]
-  (condp = datatype
-    "http://www.w3.org/2001/XMLSchema#decimal"  (parse-double value)
-    "http://www.w3.org/2001/XMLSchema#integer"  (parse-long value)
-    "http://www.w3.org/2001/XMLSchema#dateTime" value #_ (tick/instant value)
-    nil                                         value))
+(defn clojurize-query-result
+  [{{{:keys [bindings]} :results} :body}]
+  (mapv
+   #(reduce-kv (fn [m k v] (assoc m k (clojurize-query-result-value v))) {} %)
+   bindings))
 
-(defn clojurize-values*
-  [[k {:keys [type value datatype] :as v}]]
-  (let [value (condp = type
-                "uri"     (clojurize-uri value)
-                "literal" (clojurize-literal datatype value))]
-    [k (or value v)]))
+(def simple-datatype?
+  #{"commonsMedia" "external-id" "string" "time" "url"
+    "wikibase-item" "wikibase-lexeme" "wikibase-sense"})
 
-(defn clojurize-values
-  "Convert the values in `result` to Clojure types."
-  [result]
-  (into {} (map clojurize-values*) result))
+(defn clojurize-data
+  [{:keys [datatype] {v :value} :datavalue :as data}]
+  (cond-> data (simple-datatype? datatype) (assoc :datavalue v)))
 
-(defn parse-query-result
-  [response]
-  (->>
-   (get-in (json/parse-http-response response) [:body :results :bindings])
-   (mapv clojurize-values)))
+(defn clojurize*
+  [v]
+  (cond-> v
+    (:hash v)                      (dissoc :hash)
+    (:mainsnak v)                  (dissoc :id)
+    (:entity-type v)               (->> :id (keyword "wd"))
+    (:datatype v)                  (clojurize-data)
+    (:property v)                  (update :property keyword)
+    (and (:language v) (:value v)) (:value)))
+
+(defn clojurize
+  [v]
+  (clojure.walk/postwalk clojurize* v))
 
 (defn clean-up-symbols-and-seqs
   "Remove the namespace portion of namespaced symbols in `q`. We need to
@@ -102,151 +112,148 @@
         (seq? e)    (apply list e)
         :else       e))
 
-(def ^:dynamic *lang*
-  :en)
-
-(defn wb-label-service
-  []
-  [:service :wikibase/label
-   [[:bd/serviceParam :wikibase/language
-     (str "[AUTO_LANGUAGE]," (name *lang*))]]])
-
 (defn format-query
   [q]
   (->
    (clojure.walk/postwalk clean-up-symbols-and-seqs q)
    (update :prefixes merge prefixes)
-   (update :where conj (wb-label-service))
+   (update :where conj [:service :wikibase/label
+                        [[:bd/serviceParam :wikibase/language
+                          (str "[AUTO_LANGUAGE]," (name *lang*))]]])
    (f/format-query)))
 
 (defn query
-  [q]
-  (-> {:method       :get
-       :url          "https://query.wikidata.org/sparql"
-       :query-params {:query  (format-query q)
-                      :format "json"}}
-      (hc/request)
-      (parse-query-result)))
+  ([q]
+   (query "https://query.wikidata.org/sparql" q))
+  ([url q]
+   (-> {:method       :get
+        :url          url
+        :query-params {:query  (format-query q)
+                       :format "json"}}
+       (hc/request)
+       (json/parse-http-response)
+       (clojurize-query-result))))
 
-(defn entity-query
-  [lang label criteria]
-  `{:select   [?item ?sitelinks]
-    :where    [[?item :rdfs/label {~lang ~label}]
-               [?item :wikibase/sitelinks ?sitelinks]
-               ~@(mapv (fn [[p e]] `[?item ~p ~e])
-                       (partition 2 criteria))
-               ;; no :instance-of / :subclass-of wikidata properties
-               ;; and no disambiguation pages
-               [:minus [[?item (cat (* :wdt/P31) (+ :wdt/P279)) :wd/Q18616576]
-                        [?item :wdt/P31 :wd/Q4167410]]]]
-    ;; choose the entity with the most sitelinks on Wikipedia
-    :order-by [(desc ?sitelinks)]
-    :limit    1})
+(defn label->kw
+  [s]
+  (-> s
+      (str/replace #"[ /\-–]+" "-")
+      (str/replace #"[^A-Za-z0-9\.\-]" "")
+      (csk/->kebab-case-keyword)))
+
+(def properties-source
+  (io/resource "julesratte/wikidata/properties.edn"))
+
+(def properties-source-file
+  (io/file "src/julesratte/wikidata/properties.edn"))
+
+(defn update-properties!
+  [& _]
+  (->>
+   `{:select [?property ?propertyLabel]
+     :where  [{?property {:wikibase/propertyType #{?type}}}]}
+   (query)
+   (map (juxt (comp label->kw :propertyLabel) (comp keyword name :property)))
+   (reduce (fn [m [k v]] (assoc m k v)) {})
+   (pr)
+   (binding [*out*            w
+             *print-length*   nil
+             *print-dup*      nil
+             *print-level*    nil
+             *print-readably* true])
+   (with-open [w (io/writer properties-source-file)])))
+
+(def wdt
+  (read-string (slurp properties-source)))
+
+(def wdt->label
+  (reduce (fn [m [label wdt]] (assoc m wdt label)) {} wdt))
+
 
 (defn entity
   [label & criteria]
-  (let [[lang label'] (if (map? label) (first label) [*lang* label])]
-    (-> (entity-query lang label' criteria) (query) (first) (:item))))
-
-(defn wdt->wd
-  [arc]
-  (let [prefix (namespace arc)
-        id     (name arc)]
-    (if (#{"p" "ps" "wdt"} prefix) (keyword "wd" id) arc)))
-
-(defn label-query
-  [lang id]
-  `{:select [?label]
-    :where  [[~(wdt->wd id) :rdfs/label ?label]
-             [:filter (= (lang ?label) ~(name lang))]]})
+  (->
+   `{:select [?item ?sitelinks]
+     :where  [[?item :rdfs/label {~*lang* ~label}]
+              ~@(mapv (fn [[p e]] `[?item ~p ~e])
+                      (partition 2 criteria))
+              ;; no :instance-of / :subclass-of wikidata properties
+              ;; and no disambiguation pages
+              [:minus [[?item (cat (* :wdt/P31) (+ :wdt/P279)) :wd/Q18616576]
+                       [?item :wdt/P31 :wd/Q4167410]]]]
+     :limit  1}
+   (query) (first) (:item)))
 
 (defn label
   ([id]
    (label *lang* id))
   ([lang id]
-   (let [rdfs-label (-> (label-query lang id) (query) (first) (:label))]
-     (or rdfs-label id))))
-
-(defn describe-query
-  [lang id]
-  `{:select [?description]
-    :where  [[~(wdt->wd id) :schema/description ?description]
-             [:filter (= (lang ?description) ~(name lang))]]})
+   (-> `{:select [?label]
+         :where  [[~id :rdfs/label ?label]
+                  [:filter (= (lang ?label) ~(name lang))]]}
+       (query) (first) (:label) (or id))))
 
 (defn describe
   ([id]
    (describe *lang* id))
   ([lang id]
-   (-> (describe-query lang id) (query) (first) (:description))))
+   (-> `{:select [?description]
+         :where  [[~id :schema/description ?description]
+                  [:filter (= (lang ?description) ~(name lang))]]}
+       (query) (first) (:description))))
 
 (defn parse-search-result
-  [{:keys [:description :id :display] :as _vs}]
+  [{:keys [:description :id :display]}]
   {:id          (keyword "wd" id)
    :description description
    :label       (get-in display [:label :value])})
 
-(defn parse-search-results
-  [response]
-  (->> (get-in (json/parse-http-response response) [:body :search])
-       (map parse-search-result)))
+(def parse-search-results
+  (partial map parse-search-result))
+
+(def wikidata-api-endpoint
+  (client/api-endpoint "www.wikidata.org"))
 
 (defn search
   ([text]
-   (search *lang* text))
-  ([lang text]
-   (-> {:method       :get
-        :url          "https://www.wikidata.org/w/api.php"
-        :query-params {:action   "wbsearchentities"
-                       :search   text
-                       :language (name lang)
-                       :uselang  (name lang)
-                       :type     "item"
-                       :format   "json"}}
-       (hc/request)
+   (search wikidata-api-endpoint "item" text))
+  ([type text]
+   (search wikidata-api-endpoint type text))
+  ([url type text]
+   (-> (client/request-with-params
+        {:action   "wbsearchentities"
+         :search   text
+         :language (name *lang*)
+         :uselang  (name *lang*)
+         :type     type})
+       (assoc :url url)
+       (client/request!)
+       (get-in [:body :search])
        (parse-search-results))))
 
-(defn clojurize-claim
-  "Convert the values in `result` to Clojure types."
-  [{:keys [datatype] {:keys [value] :as datavalue} :datavalue :as _snak}]
-  (condp = datatype
-    "monolingualtext"   {(-> value :language keyword) (-> value :text)}
-    "wikibase-entityid" (keyword (str "wd/" (-> value :id)))
-    "wikibase-item"     (keyword (str "wd/" (-> value :id)))
-    "wikibase-lexeme"   (keyword (str "wd/" (-> value :id)))
-    "commonsMedia"      value
-    "string"            value
-    "external-id"       value
-    "time"              value
-    "url"               value
-    "quantity"          {:amount (value :amount)
-                         :units  (value :unit)}
-    [datatype datavalue]))
-
-(defn clojurize-claims*
-  [m [prop snaks]]
-  (let [label  (wdt->label (->> prop name (str "wdt/") keyword))
-        values (mapv (comp clojurize-claim :mainsnak) snaks)]
-    (assoc m label values)))
-
-(defn clojurize-claims
-  [entity-data]
-  (update entity-data :claims #(reduce clojurize-claims* {} %)))
 
 (defn entity-data-url
   [item-id]
   (str "https://www.wikidata.org/wiki/Special:EntityData/" item-id ".json"))
 
-(defn entity-data
-  [item]
-  (let [item-id (name item)]
-    (-> {:method       :get
-         :url          (entity-data-url item-id)
-         :query-params {:format "json"}}
-        (hc/request)
-        (json/parse-http-response)
-        (get-in [:body :entities])
-        (get (keyword item-id))
-        (clojurize-claims))))
+(defn parse-entities
+  [entities]
+  (reduce-kv
+   (fn [m id entity] (assoc m (keyword "wd" (name id)) (clojurize entity)))
+   {}
+   entities))
+
+(defn get-entities
+  ([ids]
+   (get-entities wikidata-api-endpoint ids))
+  ([url ids]
+   (-> (client/request-with-params
+        {:action "wbgetentities"
+         :ids    (mapv name ids)})
+       (assoc :url url)
+       (client/request!)
+       (get-in [:body :entities])
+       (parse-entities))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -256,3 +263,21 @@
            :where  [{?human {:wdt/P31  #{:wd/Q5}
                              :rdf/type #{:wdno/P40}}}]
            :limit  20}))
+(comment
+  (let [url (client/api-endpoint "www.wikidata.org")]
+    (->> (search url "lexeme" "Ferien")
+         (map :id) (get-entities url) vals #_(map :lemmas))))
+
+(comment
+  (->> `{:select [?property ?propertyLabel]
+         :where  [{?property {:wikibase/propertyType #{?type}}}]}
+       (query)
+       (map (juxt :property :propertyLabel))
+       (reduce (fn [m [id label]] (assoc m (label->kw label) id)) {}))
+
+  (->> `{:select [?property ?propertyLabel]
+         :where  [{?property {:wikibase/propertyType #{?type}}}]}
+       (query)
+       (map (juxt (comp label->kw :propertyLabel) (comp keyword name :property)))
+       (reduce (fn [m [k v]] (assoc m k v)) {})
+       (keys)))
