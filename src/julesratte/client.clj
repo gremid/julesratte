@@ -103,10 +103,10 @@
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
     (reset! request-delay (parse-long retry-after)))
   (cond
-    (retry? response) (ex-info (response->error response)
-                               (assoc response ::retry? true))
-    (error? response) (ex-info (response->error response)
-                               (assoc response ::retry? false))
+    (retry? response) (throw (ex-info (response->error response)
+                                      (assoc response ::retry? true)))
+    (error? response) (throw (ex-info (response->error response)
+                                      (assoc response ::retry? false)))
     :else             response))
 
 (def ^:dynamic *max-retries*
