@@ -1,8 +1,8 @@
 (ns julesratte.wikidata.lexemes
   (:require
    [clojure.java.io :as io]
+   [clojure.java.process :as p]
    [clojure.string :as str]
-   [hato.client :as hc]
    [julesratte.json :as json]
    [julesratte.wikidata :as wd]
    [taoensso.timbre :as log])
@@ -17,11 +17,17 @@
    (partition-all 32)
    (mapcat (partial pmap (comp wd/clojurize json/read-value)))))
 
+(def dump-url
+  "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz")
+
 (defn read-dump
+  "Download latest lexeme dump via curl.
+
+  JDK's HTTP client fails to download the resource completely."
   []
   (->
-   "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz"
-   (hc/get {:as :stream :version :http-1.1}) :body
+   (p/start {:err :discard} "curl" "-s" dump-url)
+   (p/stdout)
    (io/input-stream) (GZIPInputStream.) (io/reader)))
 
 (defn parse-dump
