@@ -3,8 +3,8 @@
    [clojure.java.io :as io]
    [clojure.java.process :as p]
    [clojure.string :as str]
-   [julesratte.json :as json]
-   [julesratte.wikidata :as wd]
+   [julesratte.json :as jr.json]
+   [julesratte.wikidata :as jr.wd]
    [taoensso.timbre :as log])
   (:import
    (java.util.zip GZIPInputStream)))
@@ -15,7 +15,7 @@
    (filter #(< 2 (count %)))
    (map #(str/replace % #",$" ""))
    (partition-all 32)
-   (mapcat (partial pmap (comp wd/clojurize json/read-value)))))
+   (mapcat (partial pmap (comp jr.wd/clojurize jr.json/read-value)))))
 
 (def dump-url
   "https://dumps.wikimedia.org/wikidatawiki/entities/latest-lexemes.json.gz")

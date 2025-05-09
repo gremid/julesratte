@@ -33,11 +33,11 @@
 
 ;; ## API request configuration
 
-(defn api-endpoint
+(defn api-url
   ([host]
-   (api-endpoint "https" host))
+   (api-url "https" host))
   ([scheme host]
-   (api-endpoint scheme host "/w/api.php"))
+   (api-url scheme host "/w/api.php"))
   ([scheme host path]
    (str scheme "://" host path)))
 
@@ -54,14 +54,16 @@
                  :errorformat   "plaintext"
                  :maxlag        "5"}})
 
-(def ^:dynamic *http-client*
-  (hc/build-http-client {:connect-timeout 5000
-                         :version         :http-2}))
+(defn build-http-client
+  [opts]
+  (->> opts
+       (merge {:connect-timeout 5000
+               :version         :http-2
+               :cookie-policy   :all})
+       (hc/build-http-client)))
 
-(defn request-with-params
-  [params]
-  (-> (apply update base-request :form-params merge params)
-      (update :form-params transform-params)))
+(def ^:dynamic *http-client*
+  (build-http-client {}))
 
 (defn error->msg
   [{:keys [module code text]}]
@@ -127,27 +129,29 @@
     ::again/fail))
 
 (defn request!
-  [request]
+  [url form-params]
   (again/with-retries
     {::again/strategy (request-retry-strategy)
      ::again/callback retry-request?}
-    (-> request (assoc :http-client *http-client*) (hc/request)
-        (json/parse-http-response) (handle-response))))
-
-(def ^:dynamic *max-requests*
-  100)
+    (-> (assoc base-request :url url :http-client *http-client*)
+        (update :form-params merge form-params)
+        (update :form-params transform-params)
+        (hc/request)
+        (json/parse-http-response)
+        (handle-response))))
 
 (defn requests!
   "Seq of API requests/responses based on continuations."
-  ([request]
-   (requests! request (dec *max-requests*)))
-  ([request remaining]
-   (let [{{:keys [continue]} :body :as response} (request! request)]
+  ([url form-params]
+   (requests! url form-params 100))
+  ([url form-params num-requests]
+   (let [{{:keys [continue]} :body :as response} (request! url form-params)
+         num-requests                            (dec num-requests)]
      (lazy-seq
-      (cons response
-            (when (and continue (pos? remaining))
-              (requests! (update request :form-params merge continue)
-                         (dec remaining))))))))
+      (cons
+       response
+       (when (and continue (pos? num-requests))
+         (requests! url (merge form-params continue) num-requests)))))))
 
 ;; ## Retrieve information about a MediaWiki instance.
 
@@ -175,17 +179,39 @@
    :site       site
    :namespaces (vals namespaces)})
 
-(def info-request
-  (request-with-params
-   {:action "query"
-    :meta   #{"siteinfo" "userinfo"}
-    :siprop #{"general" "namespaces"}
-    :uiprop #{"groups" "rights"}}))
-
 (defn info
   "Retrieve information about a MediaWiki instance."
   [url]
-  (-> (assoc info-request :url url) (request!) (parse-info)))
+  (parse-info (request! url {:meta   #{"siteinfo" "userinfo"}
+                             :siprop #{"general" "namespaces"}
+                             :uiprop #{"groups" "rights"}})))
 
 (comment
-  (info (api-endpoint "www.wikidata.org")))
+  (info (api-url "www.wikidata.org")))
+
+;; ## Authentication
+
+(defn login!
+  [url user password]
+  (let [response (request! url {:meta "tokens" :type "login"})
+        lg-token (get-in response [:body :query :tokens :logintoken])
+        response (request! url {:action     "login"
+                                :lgname     user
+                                :lgpassword password
+                                :lgtoken    lg-token})
+        result   (get-in response [:body :login :result])]
+    (when-not (= "Success" result)
+      (throw (ex-info "Login failed" response)))))
+
+(defn logout!
+  [url]
+  (let [csrf-token (-> (request! url {:meta "tokens"})
+                       (get-in [:body :query :tokens :csrftoken]))]
+    (request! url {:action "logout" :token csrf-token})))
+
+(defmacro with-login
+  [credentials & body]
+  `(let [credentials# ~credentials
+         url#         (:url credentials#)]
+     (login! url# (:user credentials#) (:password credentials#))
+     (try ~@body (finally (logout! url#)))))

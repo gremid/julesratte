@@ -1,16 +1,16 @@
 (ns julesratte.wiktionary.de
   (:require
    [clojure.string :as str]
-   [julesratte.dump :as dump]
-   [julesratte.page :as page]
-   [julesratte.wikitext :as wt]
+   [julesratte.dump :as jr.dump]
+   [julesratte.page :as jr.page]
+   [julesratte.wikitext :as jr.wt]
    [clojure.java.io :as io])
   (:import
    (org.sweble.wikitext.parser.nodes WtDefinitionList WtDefinitionListDef WtHeading WtName WtSection WtTemplate WtTemplateArgument WtTemplateArguments WtValue)))
 
 (defn find-nodes-of-type
   [clz node]
-  (filter #(instance? clz %) (wt/tree node)))
+  (filter #(instance? clz %) (jr.wt/tree node)))
 
 (defn find-children-of-type
   [clz node]
@@ -21,7 +21,7 @@
   (= n (.getLevel node)))
 
 (def text
-  (comp not-empty str/trim wt/text))
+  (comp not-empty str/trim jr.wt/text))
 
 (defn find-names
   [node]
@@ -54,7 +54,7 @@
 (defn entry-page?
   "Dictionary entries are in the main namespace."
   [title]
-  (and (page/main-namespace? title)
+  (and (jr.page/main-namespace? title)
        (not (or (re-seq #"^Archiv " title)
                 (re-seq #"^Liste " title)
                 (re-seq #" \(Konjugation\)$" title)
@@ -64,7 +64,7 @@
 
 (defn find-titled-def-list
   [title node]
-  (->> (wt/tree node)
+  (->> (jr.wt/tree node)
        (drop-while #(or (not (instance? WtTemplate %))
                         (nil? (some #{title} (find-names %)))))
        (filter #(instance? WtDefinitionList %))
@@ -224,11 +224,11 @@
   [& _]
   (try
     (with-open [input     (io/input-stream dump-xml-resource)
-                xml-input (dump/xml-event-reader input)]
-      (let [revisions (dump/parse-revisions xml-input)
+                xml-input (jr.dump/xml-event-reader input)]
+      (let [revisions (jr.dump/parse-revisions xml-input)
             revisions (filter (comp entry-page? :title) revisions)
             revisions (filter (comp not-empty :text) revisions)
-            texts     (pmap (comp wt/parse :text) revisions)
+            texts     (pmap (comp jr.wt/parse :text) revisions)
             entries   (mapcat entries texts)
             entries   (filter #(= "Deutsch" (:lang %)) entries)]
         (binding [*print-length*   nil
@@ -461,8 +461,8 @@
           (seq dump)))
 
   (with-open [input     (io/input-stream dump-xml-resource)
-              xml-input (dump/xml-event-reader input)]
-    (let [revisions (dump/parse-revisions xml-input)
+              xml-input (jr.dump/xml-event-reader input)]
+    (let [revisions (jr.dump/parse-revisions xml-input)
           revisions (filter (comp entry-page? :title) revisions)
           revisions (filter (comp not-empty :text) revisions)
           texts     (pmap (comp wt/parse :text) revisions)
