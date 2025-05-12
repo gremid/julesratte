@@ -203,11 +203,14 @@
     (when-not (= "Success" result)
       (throw (ex-info "Login failed" response)))))
 
+(defn csrf-token
+  [url]
+  (-> (request! url {:meta "tokens"})
+      (get-in [:body :query :tokens :csrftoken])))
+
 (defn logout!
   [url]
-  (let [csrf-token (-> (request! url {:meta "tokens"})
-                       (get-in [:body :query :tokens :csrftoken]))]
-    (request! url {:action "logout" :token csrf-token})))
+  (request! url {:action "logout" :token (csrf-token url)}))
 
 (defmacro with-login
   [credentials & body]
