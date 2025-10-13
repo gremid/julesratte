@@ -1,8 +1,9 @@
 (ns julesratte.client
   "MediaWiki API client, ported from Python's `mwclient` lib."
   (:require
-   [again.core :as again]
    [clojure.string :as str]
+   [com.potetm.fusebox.rate-limit :as rl]
+   [com.potetm.fusebox.retry :as retry]
    [hato.client :as hc]
    [julesratte.json :as json]
    [taoensso.timbre :as log]))
@@ -93,7 +94,7 @@
   [{{:keys [errors warnings]} :body}]
   (or errors (and *warning->error?* warnings)))
 
-(def request-delay
+(def request-delay-ms
   (atom 0))
 
 (defn handle-response
@@ -103,7 +104,7 @@
               uri (get request :body)
               (select-keys response [:request-time :status]))
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
-    (reset! request-delay (parse-long retry-after)))
+    (reset! request-delay-ms (* 1000 (parse-long retry-after))))
   (cond
     (retry? response) (throw (ex-info (response->error response)
                                       (assoc response ::retry? true)))
@@ -114,31 +115,36 @@
 (def ^:dynamic *max-retries*
   3)
 
-(defn request-retry-strategy
-  []
-  (->> (again/multiplicative-strategy 500 1.5)
-       (again/randomize-strategy 0.5)
-       (again/max-retries *max-retries*)
-       (again/max-duration 10000)
-       (cons @request-delay)))
-
 (defn retry-request?
-  [{::again/keys [status exception]}]
-  (when (and (= status :retry) (some-> exception ex-data ::retry? false?))
-    (log/warnf exception "Aborting request")
-    ::again/fail))
+  [n _ms ex]
+  (if (or (>= n *max-retries*) (some-> ex ex-data ::retry? false?))
+    (do (log/warnf ex "Aborting request") false)
+    true))
+
+(defn retry-delay
+  [n _ms _ex]
+  (max @request-delay-ms (retry/jitter 0.5 (retry/delay-exp 500 n))))
+
+(def ^:dynamic *retry*
+  (retry/init {::retry/retry? retry-request?
+               ::retry/delay  retry-delay}))
+
+(def ^:dynamic *rate-limit*
+  (rl/init {::rl/bucket-size     1
+            ::rl/period-ms       (long (/ 60000 80))
+            ::rl/wait-timeout-ms 10000}))
 
 (defn request!
   [url form-params]
-  (again/with-retries
-    {::again/strategy (request-retry-strategy)
-     ::again/callback retry-request?}
+  (->>
     (-> (assoc base-request :url url :http-client *http-client*)
         (update :form-params merge form-params)
         (update :form-params transform-params)
         (hc/request)
         (json/parse-http-response)
-        (handle-response))))
+        (handle-response))
+    (retry/with-retry *retry*)
+    (rl/with-rate-limit *rate-limit*)))
 
 (defn requests!
   "Seq of API requests/responses based on continuations."
