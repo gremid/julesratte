@@ -12,6 +12,8 @@ _– Peter Hacks: Jules Ratte. In: ders. Kinderkurzweil. Berlin. 1986._
 This library provides **API access to MediaWiki-based sites**, mainly those
 comprising the Wikidata/Wikipedia/Wikimedia landscape.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17365675.svg)](https://doi.org/10.5281/zenodo.17365675)
+
 ## Features
 
 * Stream processing of [Wikimedia dumps](https://dumps.wikimedia.org/)
