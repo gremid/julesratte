@@ -1,0 +1,18 @@
+cff-version: "1.2.0"
+title: "julesratte – a MediaWiki/Wikibase client"
+version: 1.0.0
+license: "GPL-3.0"
+type: software
+abstract: "This library provides API access to MediaWiki-based sites, mainly those comprising the Wikidata/Wikipedia/Wikimedia landscape"
+message: "If you use this software, please cite it as below."
+authors:
+  - given-names: Gregor
+    family-names: Middell
+    affiliation: Berlin-Brandenburg Academy of Sciences and Humanities
+    orcid: "https://orcid.org/0009-0000-9256-4687"
+keywords:
+  - mediawiki
+  - wikidata
+  - api
+  - client
+  - clojure
