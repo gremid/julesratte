@@ -3,8 +3,7 @@
    [clojure.java.io :as io]
    [clojure.java.process :as p]
    [clojure.string :as str]
-   [julesratte.json :as jr.json]
-   [taoensso.timbre :as log])
+   [julesratte.json :as jr.json])
   (:import
    (java.util.zip GZIPInputStream)))
 
@@ -32,16 +31,6 @@
 (defn parse-dump
   [reader]
   (sequence parse-dump-xf (line-seq reader)))
-
-(defn -main
-  [& _]
-  (log/handle-uncaught-jvm-exceptions!)
-  (try
-    (with-open [dump (read-dump)]
-      (doseq [batch (partition-all 1000 (parse-dump dump))]
-        (log/info (first batch))))
-    (finally
-      (shutdown-agents))))
 
 (comment
   (with-open [r (read-dump)]

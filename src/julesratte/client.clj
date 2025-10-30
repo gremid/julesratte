@@ -6,7 +6,7 @@
    [com.potetm.fusebox.retry :as retry]
    [hato.client :as hc]
    [julesratte.json :as json]
-   [taoensso.timbre :as log]))
+   [taoensso.telemere :as tel]))
 
 ;; ## API request parameter handling
 ;;
@@ -99,10 +99,8 @@
 
 (defn handle-response
   "Check for error/warnings in response and extract body."
-  [{:keys [uri request] :as response}]
-  (log/tracef "%s :: %s -> %s"
-              uri (get request :body)
-              (select-keys response [:request-time :status]))
+  [response]
+  (tel/event! ::response {:data response})
   (let [retry-after (get-in response [:headers "retry-after"] "0")]
     (reset! request-delay-ms (* 1000 (parse-long retry-after))))
   (cond
@@ -118,7 +116,7 @@
 (defn retry-request?
   [n _ms ex]
   (if (or (>= n *max-retries*) (some-> ex ex-data ::retry? false?))
-    (do (log/warnf ex "Aborting request") false)
+    (do (tel/error! ::request-aborted ex) false)
     true))
 
 (defn retry-delay

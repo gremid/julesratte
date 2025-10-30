@@ -1,6 +1,5 @@
 (ns user
-  (:require [taoensso.timbre :as log]))
+  (:require
+   [taoensso.telemere :as tel]))
 
-(defn trace-requests!
-  []
-  (log/merge-config! {:min-level :trace}))
+(tel/set-min-level! :warn)

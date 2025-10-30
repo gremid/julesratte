@@ -2,9 +2,7 @@
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is]]
-   [julesratte.client :as jr])
-  (:import
-   (io.github.cdimascio.dotenv Dotenv)))
+   [julesratte.client :as jr]))
 
 (deftest request-wiki-infos
   (let [isos  ["de" "en" "fr" "es" "hu"]
@@ -27,17 +25,10 @@
                    3)]
     (is (= 3 (count responses)))))
 
-(def ^Dotenv dot-env
-  (.. (Dotenv/configure) (ignoreIfMissing) (load)))
-
-(defn getenv
-  [k]
-  (or (System/getenv k) (.get dot-env k)))
-
 (defn credentials-from-env
   []
-  (let [user     (getenv "JULESRATTE_TEST_USER")
-        password (getenv "JULESRATTE_TEST_PASSWORD")]
+  (let [user     (System/getenv "JULESRATTE_TEST_USER")
+        password (System/getenv "JULESRATTE_TEST_PASSWORD")]
     (when (and user password)
       {:url      (jr/api-url "test.wikipedia.org")
        :user     user
