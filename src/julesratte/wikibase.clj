@@ -3,6 +3,7 @@
    [clojure.walk]
    [com.yetanalytics.flint :as f]
    [hato.client :as hc]
+   [julesratte.client :as jr]
    [julesratte.json :as jr.json]))
 
 (defn prefixes
@@ -91,11 +92,12 @@
 (defn query
   ([q]
    (->>
-    (format-query q)
-    (assoc-in {:method       :get
-               :url          *query-api-url*
-               :query-params {:format "json"}}
-              [:query-params :query])
+    {:method       :get
+     :url          *query-api-url*
+     :headers      {"accept"     "application/json"
+                    "user-agent" jr/user-agent}
+     :query-params {:format "json"
+                    :query  (format-query q)}}
     (hc/request)
     (jr.json/parse-http-response)
     (clojurize-query-result))))
