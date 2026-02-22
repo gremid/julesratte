@@ -67,6 +67,9 @@
                   (into [] (map ->node) (.getTitle this))
                   [target])}))
 
+  org.sweble.wikitext.parser.nodes.WtLinkTarget$WtNoLink
+  (->node [_this] "")
+
   org.sweble.wikitext.parser.nodes.WtName
   (->node [this]
     (if (.isResolved this) (.getAsString this) ""))
@@ -109,7 +112,7 @@
       (cond->
           (->(ast->node this)
              (assoc :tag :tpl)
-             (assoc-in [:attrs :name] (str/trim (.. this (getName) (getAsString)))))
+             (assoc-in [:attrs :name] (str/trim (->node (. this (getName))))))
         args (assoc :content (into [] (map ->node args))))))
 
   org.sweble.wikitext.parser.nodes.WtTemplateArgument
@@ -152,6 +155,6 @@
     (cond-> (ast->node this)
       (seq this) (assoc :content (into [] (map ->node) this))))
 
-  org.sweble.wikitext.parser.nodes.WtLeafNode
+  org.sweble.wikitext.parser.nodes.WtNode
   (->node [this]
     (ast->node this)))
