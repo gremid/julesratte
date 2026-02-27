@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/gremid/julesratte/compare/v1.0.0...v1.1.0) (2026-02-22)
+
+
+### Features
+
+* logging via telemere, local env via direnv ([1790411](https://github.com/gremid/julesratte/commit/1790411dd4035b93ec7b8c4d14d62d496171f8b2))
+
 ## 1.0.0 (2025-10-16)
 
 
